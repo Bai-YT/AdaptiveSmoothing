@@ -5,10 +5,12 @@ import torch.nn.functional as F
 from typing import List
 import numpy as np
 
-from models.policy_net import PolicyNetV3, PolicyNetV4
+from models.mixing_net import MixingNetV3, MixingNetV4
 
 
 class CompositeModel(nn.Module):
+    """Here, we use the terms "mixing network" and "policy network" interchangeably.
+    """
     enable_autocast = False
     sigmoid = nn.Sigmoid()
     softmax = nn.Softmax(dim=1)
@@ -32,20 +34,20 @@ class CompositeModel(nn.Module):
         self.policy_graph = forward_settings["policy_graph"]
         self.pn_version = forward_settings["pn_version"]
         if self.pn_version == 3:
-            self.policy_net = PolicyNetV3(forward_settings)
+            self.policy_net = MixingNetV3(forward_settings)
         elif self.pn_version == 4:
-            self.policy_net = PolicyNetV4(forward_settings)
+            self.policy_net = MixingNetV4(forward_settings)
         else:
-            raise "Unsupported Policy Network version."
+            raise "Unsupported mixing network version."
 
         self.policy_net = (
             self.policy_net.cuda() if forward_settings["parallel"] == 0 else self.policy_net)
-        print("The policy network has "
+        print("The mixing network has "
               f"{sum(p.numel() for p in self.policy_net.parameters())} parameters. "
               f"{sum(p.numel() for p in self.policy_net.parameters() if p.requires_grad)}"
               " parameters are trainable.\n")
 
-        # Batch norm layer for the policy network (act on gamma)
+        # Batch norm layer for the mixing network (act on gamma)
         self.bn = nn.BatchNorm1d(num_features=1, affine=False, momentum=0.01)
         self.softmax = nn.Softmax(dim=1)
         self.resize = forward_settings["std_model_type"] in ["rn50", "rn152"]
@@ -72,10 +74,10 @@ class CompositeModel(nn.Module):
         if self.use_policy:
             self.gamma = gamma
             print(f"gamma has been set to {self.gamma}, "
-                  "but the policy network is active so the change is not effective.")
+                  "but the mixing network is active so the change is not effective.")
         else:
             self.gamma = gamma
-            print(f"Using fixed gamma={self.gamma}. No policy.")
+            print(f"Using fixed gamma={self.gamma}. No mixing network.")
             if self.gamma == -np.inf:
                 print("Using the STD network only.")
             elif self.gamma == np.inf:
@@ -108,10 +110,10 @@ class CompositeModel(nn.Module):
         device = self.gamma_bias.device
         self.gamma_bias = nn.parameter.Parameter(
             torch.tensor(gamma_bias, device=device).float(), requires_grad=False)
-        print(f"The policy's gamma mean is set to {self.gamma_bias.item()}.")
+        print(f"The mixing network's gamma mean is set to {self.gamma_bias.item()}.")
         self.gamma_scale = nn.parameter.Parameter(
             torch.tensor(gamma_scale, device=device).float(), requires_grad=False)
-        print(f"The policy's gamma standard deviation is set to {self.gamma_scale.item()}.")
+        print(f"The mixing network's gamma standard deviation is set to {self.gamma_scale.item()}.")
 
     def set_alpha_scale_bias(self, alpha_scale, alpha_bias):
         assert alpha_bias >= 0, "The range of alpha cannot be negative."
@@ -137,7 +139,7 @@ class CompositeModel(nn.Module):
 
     def do_checks(self, images):
         if self.policy_graph and not self.use_policy:
-            raise ValueError('policy_graph cannot be created without the policy.')
+            raise ValueError('policy_graph cannot be created without the mixing network.')
         for model in self.models:
             assert not model.training
 
@@ -175,7 +177,7 @@ class CompositeModel(nn.Module):
             out_data_std, interm_std = self.models[0](images_resized)
             out_data_rob, interm_rob = self.models[1](images)
 
-            if self.use_policy and self.alpha_scale != 0:  # Use the policy network
+            if self.use_policy and self.alpha_scale != 0:  # Use the mixing network
                 if self.policy_graph:
                     gammas = self.policy_net(
                         [interm_std[0], interm_rob[0]], [interm_std[1], interm_rob[1]])
