@@ -18,8 +18,8 @@ Alternatively, setup an environment that contains the above packages using your 
 
 Next, make a directory `<YOUR_MODEL_ROOT_DIR>` at a desired path to store the model checkpoints. Download the following models:
 - Accurate base classifier: [Big Transfer (BiT)](https://github.com/google-research/big_transfer) ResNet-152 model finetuned on CIFAR-100 -- [download](https://drive.google.com/uc?export=download&id=1kdzhroeI9-pYuy0WQPF-DJH3-tDYJbvj)
-- Robust base classifier 1: WideResNet-70-16 model from [this repo](https://github.com/wzekai99/DM-Improves-AT) -- [download](https://huggingface.co/wzekai99/DM-Improves-AT/resolve/main/checkpoint/cifar100_linf_wrn70-16.pt)
-- Robust base classifier 2: WideResNet-70-16 model from [this repo](https://github.com/deepmind/deepmind-research/tree/master/adversarial_robustness) -- [download](https://storage.googleapis.com/dm-adversarial-robustness/cifar100_linf_wrn70-16_with.pt)
+- Robust base classifier 1: WideResNet-70-16 model from [this repo](https://github.com/wzekai99/DM-Improves-AT) -- [download](https://huggingface.co/wzekai99/DM-Improves-AT/resolve/main/checkpoint/cifar100_linf_wrn70-16.pt) and rename as `cifar100_linf_edm_wrn70-16.pt`.
+- Robust base classifier 2: WideResNet-70-16 model from [this repo](https://github.com/deepmind/deepmind-research/tree/master/adversarial_robustness) -- [download](https://storage.googleapis.com/dm-adversarial-robustness/cifar100_linf_wrn70-16_with.pt) and rename as `cifar100_linf_trades_wrn70-16.pt`.
 - Mixing network to be coupled with robust base classifier 1 -- [download](https://drive.google.com/uc?export=download&id=13busCr_xvU4i7jl8gc12VBfN6wRIjKM2)
 - Mixing network to be coupled with robust base classifier 2 -- [download](https://drive.google.com/uc?export=download&id=1qP6v5XtbFoeaYp9BTzTmPVAjTKy6CYAf)
 
@@ -51,3 +51,5 @@ To evaluate, run the following:
 ```
 python run.py --eval --config configs/xxx.yaml
 ```
+
+Note that while the base classifiers may require additional (collected or generated) training data, the mixing networks are only trained on CIFAR-100 trainning data.
