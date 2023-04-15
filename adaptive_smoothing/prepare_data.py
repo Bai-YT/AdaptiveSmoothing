@@ -1,13 +1,12 @@
 import torch
 import torch.nn as nn
-import torchvision.transforms as transforms
 
 import numpy as np
 import pickle
 from tqdm import tqdm
 
-from . import attacks, utils
-from .losses import DLRLoss, CompLoss
+from adaptive_smoothing import attacks
+from adaptive_smoothing.losses import DLRLoss, CompLoss
 
 LOSSES = {'ce': nn.CrossEntropyLoss(), 'dlr': DLRLoss(), 'comp': CompLoss()}
 
@@ -26,7 +25,8 @@ def load_data(load_path):
             test_imageset.detach().cpu(), test_labelset.detach().cpu())
 
 
-def save_data(train_adv_imageset, train_labelset, test_adv_imageset, test_labelset, dump_path):
+def save_data(train_adv_imageset, train_labelset, 
+              test_adv_imageset, test_labelset, dump_path):
     train_data = (train_adv_imageset, train_labelset)
     test_data = (test_adv_imageset, test_labelset)
     data = {"train": train_data, "test": test_data}
@@ -53,19 +53,19 @@ def prepare_single_data_worker(model, loader, pgd_settings, device, debug=False)
     titer = tqdm(loader, unit="batch")
     for ind1, (images, labels) in enumerate(titer):
         images, labels = images.to(device), labels.to(device)
-        adv_images = attacks.single_pgd_attack(model, images, labels, device=device, mom_decay=0,
-                                               pgd_type=pgd_settings["type"],
-                                               pgd_eps=pgd_settings["eps"],
-                                               pgd_alpha=pgd_settings["alpha_test"],
-                                               pgd_iters=pgd_settings["iters_test"],
-                                               pgd_loss=LOSSES[pgd_settings["pgd_eval_loss"]])
+
+        adv_images = attacks.single_pgd_attack(
+            model, images, labels, device=device, mom_decay=0,
+            pgd_type=pgd_settings["type"], pgd_eps=pgd_settings["eps"],
+            pgd_alpha=pgd_settings["alpha_test"], pgd_iters=pgd_settings["iters_test"],
+            pgd_loss=LOSSES[pgd_settings["pgd_eval_loss"]])
         adv_imageset += [adv_images.detach().cpu()]
         labelset += [labels.detach().cpu()]
 
         scores, _ = model(adv_images)
         cur_accuracy = (scores.argmax(dim=1) == labels).double().mean().item()
         total_accuracy += cur_accuracy
-        
+
         # Update TQDM postfix
         titer.set_postfix(cur_accuracy=cur_accuracy*100.)
         if debug and ind1 == 1: 
@@ -75,24 +75,29 @@ def prepare_single_data_worker(model, loader, pgd_settings, device, debug=False)
     return adv_imageset, labelset
 
 
-def prepare_single_data(model, pgd_settings, batch_size, trainloader, testloader,
-                        dataset_name, dataset_path, dump_path, device, test_only=False, debug=False):
+def prepare_single_data(model, pgd_settings, trainloader, testloader,
+                        dump_path, device, test_only=False, debug=False):
 
     print(f"Only prepare the test set: {test_only}")
-    test_adv_imageset, test_labelset = prepare_single_data_worker(model, testloader, pgd_settings,
-                                                                  device=device, debug=debug)
+    test_adv_imageset, test_labelset = prepare_single_data_worker(
+        model, testloader, pgd_settings, device=device, debug=debug)
     if test_only:
         train_adv_imageset, train_labelset = None, None
     else:
-        train_adv_imageset, train_labelset = prepare_single_data_worker(model, trainloader, pgd_settings,
-                                                                        device=device, debug=debug)
+        train_adv_imageset, train_labelset = prepare_single_data_worker(
+            model, trainloader, pgd_settings, device=device, debug=debug)
+    
     # Save data
-    train_adv_imageset, train_labelset = assemble_data(train_adv_imageset, train_labelset, nested=False)
-    test_adv_imageset, test_labelset = assemble_data(test_adv_imageset, test_labelset, nested=False)
-    save_data(train_adv_imageset, train_labelset, test_adv_imageset, test_labelset, dump_path=dump_path)
+    train_adv_imageset, train_labelset = assemble_data(
+        train_adv_imageset, train_labelset, nested=False)
+    test_adv_imageset, test_labelset = assemble_data(
+        test_adv_imageset, test_labelset, nested=False)
+    save_data(train_adv_imageset, train_labelset, test_adv_imageset, 
+              test_labelset, dump_path=dump_path)
 
 
-def prepare_comp_data_worker(comp_model, _comp_model, alphas, loader, pgd_settings, log_path, device, debug=False):
+def prepare_comp_data_worker(comp_model, _comp_model, alphas, loader, 
+                             pgd_settings, log_path, device, debug=False):
     adv_imageset, labelset = [[] for _ in alphas], [[] for _ in alphas]
     total_accuracies = [0 for _ in alphas]
 
@@ -102,12 +107,12 @@ def prepare_comp_data_worker(comp_model, _comp_model, alphas, loader, pgd_settin
             titer.set_description(f"{ind1}, alpha={alpha:.4f}")
             images, labels = images.to(device), labels.to(device)
             _comp_model.alpha = alpha
-            adv_images = attacks.comp_pgd_attack(comp_model, images, labels, mom_decay=0,
-                                                 pgd_type=pgd_settings["type"],
-                                                 pgd_eps=pgd_settings["eps"],
-                                                 pgd_alpha=pgd_settings["alpha_test"],
-                                                 pgd_iters=pgd_settings["iters_test"],
-                                                 pgd_loss=LOSSES[pgd_settings["pgd_eval_loss"]])
+
+            adv_images = attacks.comp_pgd_attack(
+                comp_model, images, labels, mom_decay=0,
+                pgd_type=pgd_settings["type"], pgd_eps=pgd_settings["eps"],
+                pgd_alpha=pgd_settings["alpha_test"], pgd_iters=pgd_settings["iters_test"],
+                pgd_loss=LOSSES[pgd_settings["pgd_eval_loss"]])
             adv_imageset[ind1] += [adv_images.detach().cpu()]
             labelset[ind1] += [labels.detach().cpu()]
 
@@ -121,27 +126,33 @@ def prepare_comp_data_worker(comp_model, _comp_model, alphas, loader, pgd_settin
         if log_path is not None:
             with open(log_path + "_" + str(ind1) + ".pickle", 'wb') as logfile:
                 pickle.dump((adv_imageset[ind1], labelset[ind1]), logfile, protocol=4)
-        print(f"Total accuracy for alpha={alpha:.3e}: {total_accuracies[ind1] / (ind2 + 1) * 100.:.2f} %.")
+        print(f"Total accuracy for alpha={alpha:.3e}: "
+              f"{total_accuracies[ind1] / (ind2 + 1) * 100.:.2f} %.")
 
     print("Total accuracy:", [acc / (ind2 + 1) * 100. for acc in total_accuracies])
     return adv_imageset, labelset
 
 
-def prepare_comp_data(comp_model, _comp_model, alphas, pgd_settings, batch_size, trainloader, testloader, dataset_name, 
-                      dataset_path, log_path_train, log_path_test, dump_path, device, test_only=False, debug=False):
+def prepare_comp_data(comp_model, _comp_model, alphas, pgd_settings, 
+                      trainloader, testloader, log_path_train, log_path_test, 
+                      dump_path, device, test_only=False, debug=False):
     print("alphas:", alphas)
     assert _comp_model.defense_type == pgd_settings["type"]
     print(f"Only prepare the test set: {test_only}")
 
     test_adv_imageset, test_labelset = prepare_comp_data_worker(
-        comp_model, _comp_model, alphas, testloader, pgd_settings, log_path_test, device=device, debug=debug)
+        comp_model, _comp_model, alphas, testloader, pgd_settings, 
+        log_path_test, device=device, debug=debug)
     if test_only:
         train_adv_imageset, train_labelset = None, None
     else:
         train_adv_imageset, train_labelset = prepare_comp_data_worker(
-            comp_model, _comp_model, alphas, trainloader, pgd_settings, log_path_train, device=device, debug=debug)
+            comp_model, _comp_model, alphas, trainloader, pgd_settings, 
+            log_path_train, device=device, debug=debug)
+
     # Save data as list of tensors
-    save_data(train_adv_imageset, train_labelset, test_adv_imageset, test_labelset, dump_path=dump_path)
+    save_data(train_adv_imageset, train_labelset, 
+              test_adv_imageset, test_labelset, dump_path=dump_path)
 
 
 def replace_tensor_list(load_path, dump_path):
@@ -150,18 +161,21 @@ def replace_tensor_list(load_path, dump_path):
     train_adv_imageset, train_labelset = data["train"]
     test_adv_imageset, test_labelset = data["test"]
     # Concatenate tensor list
-    train_adv_imageset, train_labelset = assemble_data(train_adv_imageset, train_labelset, nested=True)
-    test_adv_imageset, test_labelset = assemble_data(test_adv_imageset, test_labelset, nested=True)
-    save_data(train_adv_imageset, train_labelset, test_adv_imageset, test_labelset, dump_path=dump_path)
+    train_adv_imageset, train_labelset = assemble_data(
+        train_adv_imageset, train_labelset, nested=True)
+    test_adv_imageset, test_labelset = assemble_data(
+        test_adv_imageset, test_labelset, nested=True)
+    save_data(train_adv_imageset, train_labelset, 
+              test_adv_imageset, test_labelset, dump_path=dump_path)
 
 
 def assemble_policy_data(load_path_std, load_path_adv, load_path_comp, alphas, dump_path):
-    train_adv_imageset_clean, train_labelset_clean, test_adv_imageset_clean, test_labelset_clean = \
-        load_data(load_path_std)
-    train_adv_imageset_adv, train_labelset_adv, test_adv_imageset_adv, test_labelset_adv = \
-        load_data(load_path_adv)
-    train_adv_imageset_comp, train_labelset_comp, test_adv_imageset_comp, test_labelset_comp = \
-        load_data(load_path_comp)
+    (train_adv_imageset_clean, train_labelset_clean,
+     test_adv_imageset_clean, test_labelset_clean) = load_data(load_path_std)
+    (train_adv_imageset_adv, train_labelset_adv,
+     test_adv_imageset_adv, test_labelset_adv) = load_data(load_path_adv)
+    (train_adv_imageset_comp, train_labelset_comp,
+     test_adv_imageset_comp, test_labelset_comp) = load_data(load_path_comp)
 
     if train_adv_imageset_comp is None:
         train_data, train_labels = None, None

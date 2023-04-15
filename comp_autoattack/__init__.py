@@ -1,0 +1,1 @@
+from comp_autoattack.autoattack import AutoAttack

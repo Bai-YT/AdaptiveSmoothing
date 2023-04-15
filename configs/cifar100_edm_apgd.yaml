@@ -1,0 +1,91 @@
+seed: 20220304
+
+model_load_path:
+  std: 'Base/cifar100_bit_rn152.tar'
+  rob: 'Base/cifar100_linf_edm_wrn70-16.pt'
+  # Use this when continuing from a checkpoint or performing evaluation
+  # 'None'  # CompModel/.../epoch_5_ba_400.pt
+  comp: "CompModel/CIFAR-100_TRADES_Linf/V4_APGD_EDM/epoch_1_ba_312.pt"
+
+log_dir: YOUR_MODEL_ROOT_DIR  # Parent folder of trained models and custom datasets
+log_path: 'CompModel/CIFAR-100_TRADES_Linf/V4_APGD_EDM'
+
+# For training / evaluating the policy
+forward_settings:
+  std_model_type: 'rn152'
+  rob_model_type: 'wrn7016_silu'
+  std_model_scale: 2.  # The scaling applied to the logits of the std_model
+  rob_model_scale: 1.  # The scaling applied to the logits of the rob_model
+  in_planes: '(512, 256)'
+  gamma: 2.5  # np.inf if ROB-only; -np.inf if STD-only. Overriden by use_policy.
+  use_policy: True  # True if using policy network, False if no policy.
+  policy_graph: True  # True if use the policy's gradient for attack, False otherwise.
+  pn_version: 4  # 3 for CIFAR-10, 4 for larger CIFAR-100 models
+  # Range of alpha will be (alpha_bias, alpha_bias + alpha_scale)
+  alpha_scale: .15  # Scaling of alpha (only applies to the policy)
+  alpha_bias: .84  # Bias of alpha (only applies to the policy)
+  parallel: True
+
+dataset_settings:
+  name: 'CIFAR-100'
+  train_with_test: False  # If True, then train on the test set of CIFAR-100
+  train_shuffle: True
+  path: 'data'
+  pa_path: 'None'  # Pre-attacked data path
+  gamma_0: 'None'  # For pre-attacked data
+  blocks: 5  # 8 if pre-attacked data specified, else 5
+
+training_settings:
+  epochs: 3
+  # 160 (160) for V100, 200 (200) for A10G for AA (PGD)
+  batch_size_train_per_gpu: 40
+  # 25 for V100, 40 for A10G without policy; 12 for V100, 30 for A10G with policy.
+  # 50 for V100, 60 for A10G if PGD.
+  batch_size_test_per_gpu: 40
+  save_eval_imgs: True
+  lr: 5e-5
+  weight_decay: 1e-5
+  comp_loss_params:
+    consts:
+      bce: 1.5
+      ce: 0.
+      prod: .2
+    scale: 
+      clean: 1.
+      ada: 1.
+      pa: 1.
+  # Number of mini-batches before optimizer step. -1 for batch optimization.
+  accum_grad: 4  # 4 for APGD, -1 for PGD
+  use_fast_loader: True  # True for APGD, False for PGD
+  gamma_consts:  # (scale, bias). Only applies when the policy network is active.
+    train: '(2., .4)'
+    eval: '(2., 1.3)'
+  eval_freq:
+    epoch: 4  # Training epochs + 1
+    iter: 104  # For 4 GPUs
+
+pgd_settings:
+  type: 'l_inf'
+  eps: 'default'  # 8/255 for l_inf, 0.5 for l_2
+  iters_test: 20  # Only for PGD and not for AA
+  alpha_test: .0027  # Only for PGD and not for AA
+  use_aa: True  # True for APGD, False for PGD
+  n_target_classes: 9  # 9 for APGD, 0 for PGD
+  pgd_eval_loss: 'ce'  # 'comp_simple' for stronger PGD, 'ce' for standard PGD, no effect on AA
+  attacks_to_run: 'default'
+  # 'default' is ['apgd-ce', 'apgd-t', 'fab-t', 'square'] for final evaluation and 
+  #     ['apgd-ce', 'apgd-t'] for training-time validation
+  # For stronger evaluation AA, use ['apgd-ce-rand', 'apgd-t-rand', 'fab-t', 'square']
+
+randomized_attack_settings:
+  randomize: True
+  apgd: True  # True for APGD, False for PGD
+  random_start: True
+  eps_factor_loc: .4
+  eps_factor_scale: .7
+  mom_decay_loc: 0.
+  mom_decay_scale: .9
+  iters_df: 75
+  iters_const: 0
+  alpha_factor: 5  # The factor related to the step size alpha (not the smoothing alpha)
+  comp_loss_wmax: .4

@@ -8,15 +8,17 @@ import torchvision.datasets as datasets
 import torchvision.transforms as transforms
 from torchvision.models import convnext_tiny, ConvNeXt_Tiny_Weights
 
-import numpy as np
-import matplotlib.pyplot as plt
 from tqdm import tqdm
-from os.path import join
+import numpy as np
 
-import sys
-module_path = "/content/drive/MyDrive/Adaptive Smoothing"
-if module_path not in sys.path:
-    sys.path.append(module_path)
+import matplotlib.pyplot as plt
+plt.rcParams['pdf.fonttype'] = 42  # Avoid type-3 fonts
+plt.rcParams['ps.fonttype'] = 42
+
+import sys, os
+par_dir = os.path.split(os.getcwd())[0]
+if par_dir not in sys.path:
+    sys.path.append(par_dir)
 from adaptive_smoothing.attacks import single_pgd_attack, comp_pgd_attack
 
 
@@ -39,38 +41,54 @@ class SimpleCompositeModel(nn.Module):
     def __init__(self, std_model, adv_model, comp_model_setting, allow_grad=True, alpha=None):
         super().__init__()
         self.std_model, self.adv_model = std_model, adv_model
+        self.alpha = alpha
+        
         self.use_gradnorm_std = comp_model_setting["use_gradnorm_std"]
         self.use_gradnorm_adv = comp_model_setting["use_gradnorm_adv"]
         self.accelerate = comp_model_setting["accelerate"]
         self.allow_grad = allow_grad
-
-        self.alpha = alpha
-        self.sm, self.use_sm = nn.Softmax(dim=1), comp_model_setting["use_sm"]
         self.defense_p = 1 if comp_model_setting["attack_type"] == 'l_inf' else 2
+        
+        self.sm = nn.Softmax(dim=1)
+        self.use_sm = comp_model_setting["use_sm"]
+        if "use_log" in comp_model_setting.keys():
+            self.use_log = comp_model_setting["use_log"]  # If random smoothing then no log
+        else:
+            self.use_log = self.use_sm
 
     def get_grad_norm(self, out_data, images_var):
-        # Compute gradient norm
-        # To verify if gradient can flow through gradnorm, try
-        # x_grad = autograd.grad(gradnorm, images_var,
-        #     grad_outputs=torch.ones((n,1), device=device))
+        """
+        Computes the gradient norm.
+        
+        To verify if gradient can flow through gradnorm, try
+        x_grad = autograd.grad(gradnorm, images_var,
+                               grad_outputs=torch.ones((n,1), device=device))
+        """
         n, c = out_data.shape
         if self.accelerate:
             images_grad = autograd.grad(
-                out_data.max(dim=1).values, images_var,
-                create_graph=self.allow_grad, retain_graph=True,
-                grad_outputs=torch.ones((n,), device='cuda'))[0]
+                out_data.max(dim=1).values, images_var, create_graph=self.allow_grad, 
+                retain_graph=True, grad_outputs=torch.ones((n,), device='cuda'))[0]
             gradnorm = images_grad.reshape(n, -1).norm(
                 dim=1, p=self.defense_p).unsqueeze(1)
         else:
             gradnorm = torch.zeros((n, c), device='cuda')
             for i in range(c):
                 images_grad = autograd.grad(
-                    out_data[:, i], images_var,
-                    create_graph=self.allow_grad, retain_graph=True,
-                    grad_outputs=torch.ones((n,), device='cuda'))[0]
+                    out_data[:, i], images_var, create_graph=self.allow_grad, 
+                    retain_graph=True, grad_outputs=torch.ones((n,), device='cuda'))[0]
                 gradnorm[:, i] = images_grad.reshape(n, -1).norm(
                     dim=1, p=self.defense_p)
         return gradnorm
+    
+    def stitch(self, trade_off, cur_alpha, outputs_std, outputs_adv):
+        cur_R = trade_off * cur_alpha
+        if cur_R == 0:
+            return torch.log(outputs_std) if self.use_log else outputs_std
+        if cur_R == np.inf:
+            return torch.log(outputs_adv) if self.use_log else outputs_adv
+        return torch.log(outputs_std + cur_R * outputs_adv) - torch.log(
+            1 + cur_R) if self.use_log else (outputs_std + cur_R * outputs_adv) / (1 + cur_R)
 
     def forward(self, images):
         assert self.alpha is not None
@@ -81,10 +99,14 @@ class SimpleCompositeModel(nn.Module):
 
         images_var = images if images.requires_grad else (
             images.clone().detach().requires_grad_(True))
-        outputs_adv = self.adv_model(images_var)[0]
-        outputs_std = self.std_model(images_var)[0]
+        outputs_std = self.std_model(images_var)[0].float()
+        outputs_adv = self.adv_model(images_var)[0].float()
         if self.use_sm:
-            outputs_std, outputs_adv = self.sm(outputs_std), self.sm(outputs_adv)
+            outputs_std = self.sm(outputs_std)
+            if hasattr(self.adv_model, "ABSTAIN"):  # If the model can abstain, then it uses RS
+                outputs_adv = outputs_adv / outputs_adv.sum(dim=1).unsqueeze(dim=1)
+            else:
+                outputs_adv = self.sm(outputs_adv)
 
         trade_off = torch.tensor(1.)
         if self.use_gradnorm_std:
@@ -94,16 +116,12 @@ class SimpleCompositeModel(nn.Module):
             gradnorm_adv = self.get_grad_norm(outputs_adv, images_var)
             trade_off = trade_off / gradnorm_adv  # Don't use in-place operations
 
-        if isinstance(self.alpha, list):
+        if isinstance(self.alpha, list):  # If alpha is a list, evaluate at each value
             outputs = [None for _ in self.alpha]
             for alpha_ind, cur_alpha in enumerate(self.alpha):
-                cur_R = trade_off * cur_alpha
-                outputs[alpha_ind] = torch.log(outputs_std + cur_R * outputs_adv) - torch.log(
-                    1 + cur_R) if self.use_sm else (outputs_std + cur_R * outputs_adv) / (1 + cur_R)
-        else:
-            cur_R = trade_off * self.alpha
-            outputs = torch.log(outputs_std + cur_R * outputs_adv) - torch.log(
-                1 + cur_R) if self.use_sm else (outputs_std + cur_R * outputs_adv) / (1 + cur_R)
+                outputs[alpha_ind] = self.stitch(trade_off, cur_alpha, outputs_std, outputs_adv)
+        else:  # If alpha is a number, simply evaluate
+            outputs = self.stitch(trade_off, self.alpha, outputs_std, outputs_adv)
 
         return outputs, images_var, self.alpha
 
@@ -118,20 +136,38 @@ def load_model(model, path):
     return model
 
 
-def get_dataloaders(batch_size, img_per_class=200):
+def get_dataloaders(batch_size, img_per_class=200, n_skip=1):
+    """
+    Args:
+        batch_size (dict): the training and test batch sizes.
+        img_per_class (int, optional): The number of images per class to consider. Defaults to 200.
+        n_skip (int, optional): The number of images to be skiped. Defaults to 1.
+        
+        ***** The length of the test set is img_per_class // n_skip * num_classes (10). *****
+    Returns:
+        (Dataloader, Dataloader): training and test dataloaders.
+    """
     transform = transforms.Compose([transforms.ToTensor()])
-
-    testset = datasets.CIFAR10(root='/content/drive/MyDrive/Datasets',
-                               train=False, download=True, transform=transform)
+    try:
+        testset = datasets.CIFAR10(root='/content/drive/MyDrive/Datasets',
+                                train=False, download=True, transform=transform)
+    except:
+        testset = datasets.CIFAR10(root='/home/ybai/project/Adaptive-Smoothing/Datasets',
+                                train=False, download=True, transform=transform)
 
     testset = ConcatDataset([
-        Subset(testset, list(np.arange(i*1000, i*1000+img_per_class))) for i in range(10)])
+        Subset(testset, list(np.arange(i*1000, i*1000+img_per_class, n_skip))) for i in range(10)])
     print(f"Number of test images: {len(testset)}.")
     testloader = torch.utils.data.DataLoader(
         testset, batch_size=batch_size["Test"], shuffle=False)
 
-    trainset = datasets.CIFAR10(root='/content/drive/MyDrive/Datasets',
-                                train=True, download=True, transform=transform)
+    try:
+        trainset = datasets.CIFAR10(root='/content/drive/MyDrive/Datasets',
+                                    train=True, download=True, transform=transform)
+    except:
+        trainset = datasets.CIFAR10(root='/home/ybai/project/Adaptive-Smoothing/Datasets',
+                                    train=True, download=True, transform=transform)
+
     trainloader = torch.utils.data.DataLoader(
         trainset, batch_size=batch_size["Train"], shuffle=False)
     return trainloader, testloader
@@ -235,7 +271,7 @@ def plot_results(alphas, base_acc, comp_acc, save_dir, pgd_type='l_inf'):
     plt.plot(
         [0] + alphas["Clean"] + [alpha_max * 10],
         [base_acc["STD"]["Clean"]] + comp_acc["Clean"] + [base_acc["ADV"]["Clean"]],
-        '-', label=r"$g_{CNN}^\theta (\cdot)$ only, Clean")
+        '-', label=r"$g_{CNN}^\alpha (\cdot)$ only, Clean")
     plt.plot([0, alpha_max * 10], [base_acc["STD"]["Clean"]] * 2, '--',
              label=r"$g (\cdot)$ only, Clean")
     plt.plot([0, alpha_max * 10], [base_acc["ADV"]["Clean"]] * 2, '--',
@@ -249,12 +285,12 @@ def plot_results(alphas, base_acc, comp_acc, save_dir, pgd_type='l_inf'):
     plt.grid()
     plt.legend()
     plt.tight_layout()
-    plt.savefig(join(save_dir, "clean_nograd.pdf"))
+    plt.savefig(os.path.join(save_dir, "clean_nograd.pdf"))
 
     _ = plt.figure(figsize=(6.2, 4.4))
     for typ in ["Clean", "STD", "ADV", "Comp"]:
         plt.plot(alphas[typ], comp_acc[typ], '-',
-                 label=r"$g_{CNN}^\theta (\cdot)$" + f", {typ}")
+                 label=r"$g_{CNN}^\alpha (\cdot)$" + f", {typ}")
 
     plt.plot([0, alpha_max * 10], [base_acc["STD"]["Clean"]] * 2, '--',
              label=r"$g (\cdot)$ only, Clean")
@@ -279,4 +315,4 @@ def plot_results(alphas, base_acc, comp_acc, save_dir, pgd_type='l_inf'):
     plt.grid()
     plt.legend()
     plt.tight_layout()
-    plt.savefig(join(save_dir, "all.pdf"))
+    plt.savefig(os.path.join(save_dir, "all.pdf"))

@@ -1,0 +1,88 @@
+seed: 20220304
+
+model_load_path:
+  std: 'Base/cifar10_std_prn18.pt'
+  rob: 'Base/cifar10_at_prn18.pt'
+  # Use this when continuing from a checkpoint or performing evaluation
+  # 'None'  # CompModel/.../epoch_5_ba_400.pt
+  comp: 'None'
+
+log_dir: YOUR_MODEL_ROOT_DIR  # Parent folder of trained models and custom datasets
+log_path: 'CompModel/CIFAR-10_AT_Linf/LossAblation/.5_1_.1'
+
+# For training / evaluating the policy
+forward_settings:
+  std_model_type: 'rn18'
+  rob_model_type: 'rn18'
+  std_model_scale: 1.  # The scaling applied to the logits of the std_model
+  rob_model_scale: 1.  # The scaling applied to the logits of the rob_model
+  in_planes: '(64, 64)'
+  gamma: 2.  # np.inf if ROB-only; -np.inf if STD-only. Overriden by use_policy.
+  use_policy: True  # True if using policy network, False if no policy.
+  policy_graph: True  # True if use the policy's gradient for attack, False otherwise.
+  pn_version: 3  # 3 for CIFAR-10, 4 for larger CIFAR-100 models
+  alpha_scale: .75  # Scaling of alpha (only applies to the policy)
+  alpha_bias: .2  # Bias of alpha (only applies to the policy)
+  parallel: True
+
+dataset_settings:
+  name: 'CIFAR-10'
+  train_with_test: False  # If True, then train on the test set of CIFAR-10
+  train_shuffle: True
+  path: 'data'
+  # Pre-attacked data path
+  pa_path: '/home/ybai/disk/CustomDatasets/Linf_CIFAR-10/CC_AT/dataset_argmax.pickle'
+  gamma_0: 7.1  # For pre-attacked data
+  blocks: 8  # 8 if pre-attacked data specified, else 5
+
+training_settings:
+  epochs: 5
+  batch_size_train_per_gpu: 500
+  batch_size_test_per_gpu: 800
+  save_eval_imgs: True
+  lr: 1e-4
+  weight_decay: 1e-5
+  comp_loss_params:
+    consts:
+      bce: 1.
+      ce: .5
+      prod: .1
+    scale: 
+      clean: 2.
+      ada: 1.
+      pa: 1.
+  # Number of mini-batches before optimizer step. -1 for batch optimization.
+  accum_grad: -1  # 2 for APGD, -1 for PGD
+  use_fast_loader: False  # True for APGD, False for PGD
+  gamma_consts:  # (scale, bias). Only applies when the policy network is active.
+    train: '(2., .4)'
+    eval: '(3., 20.)'
+  eval_freq:
+    epoch: 2
+    iter: 'none'
+
+pgd_settings:
+  type: 'l_inf'
+  eps: 'default'  # 8/255 for l_inf, 0.5 for l_2
+  iters_test: 20  # Only for PGD and not for AA
+  alpha_test: .0027  # Only for PGD and not for AA
+  use_aa: True  # True for APGD, False for PGD
+  n_target_classes: 9  # 9 for APGD, 0 for PGD
+  pgd_eval_loss: 'ce'  # 'comp_simple' for stronger PGD, 'ce' for standard PGD, no effect on AA
+  attacks_to_run: 'default'
+  # 'default' is ['apgd-ce', 'apgd-t', 'fab-t', 'square'] for final evaluation and 
+  #     ['apgd-ce', 'apgd-t'] for training-time validation
+  # For stronger evaluation AA, use ['apgd-ce-rand', 'apgd-t-rand', 'fab-t', 'square']
+
+randomized_attack_settings:
+  randomize: True
+  apgd: True  # True for APGD, False for PGD
+  random_start: True
+  eps_factor_loc: .4
+  eps_factor_scale: .7
+  mom_decay_loc: 0.
+  mom_decay_scale: .9
+  iters_df: 75  # 75 for APGD, 20 for PGD
+  iters_const: 0
+  alpha_factor: 5  # The factor related to the step size alpha (not the smoothing alpha)
+  comp_loss_wmax: .4

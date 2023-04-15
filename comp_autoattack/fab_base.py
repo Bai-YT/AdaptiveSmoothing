@@ -11,11 +11,9 @@ from __future__ import print_function
 from __future__ import unicode_literals
 
 import time
-
 import torch
 
-from autoattack.fab_projections import projection_linf, projection_l2,\
-    projection_l1
+from autoattack.fab_projections import projection_linf, projection_l2, projection_l1
 
 DEFAULT_EPS_DICT_BY_NORM = {'Linf': .3, 'L2': 1., 'L1': 5.0}
 
@@ -92,7 +90,7 @@ class FABAttack():
         self.ndims = len(self.orig_dim)
 
         x = x.detach().clone().float().to(self.device)
-        #assert next(self.predict.parameters()).device == x.device
+        # assert next(self.predict.parameters()).device == x.device
 
         y_pred = self._get_predicted_label(x)
         if y is None:
@@ -239,7 +237,6 @@ class FABAttack():
                         x1[ind_adv] - im2[ind_adv]) * self.beta
 
                 counter_iter += 1
-
             counter_restarts += 1
 
         ind_succ = res2 < 1e10
@@ -259,7 +256,6 @@ class FABAttack():
         if self.device is None:
             self.device = x.device
         adv = x.clone()
-        # with torch.no_grad():
         acc = self._predict_fn(x)[0].max(1)[1] == y
 
         startt = time.time()
@@ -273,8 +269,8 @@ class FABAttack():
                 if len(ind_to_fool.shape) == 0: ind_to_fool = ind_to_fool.unsqueeze(0)
                 if ind_to_fool.numel() != 0:
                     x_to_fool, y_to_fool = x[ind_to_fool].clone(), y[ind_to_fool].clone()
-                    adv_curr = self.attack_single_run(x_to_fool, y_to_fool, 
-                                                      use_rand_start=(counter > 0), is_targeted=False)
+                    adv_curr = self.attack_single_run(
+                        x_to_fool, y_to_fool, use_rand_start=(counter > 0), is_targeted=False)
                     acc_curr = self._predict_fn(adv_curr)[0].max(1)[1] == y_to_fool
                     if self.norm == 'Linf':
                         res = (x_to_fool - adv_curr).abs().reshape(x_to_fool.shape[0], -1).max(1)[0]
@@ -318,5 +314,4 @@ class FABAttack():
                         if self.verbose:
                             print('restart {} - target_class {} - robust accuracy: {:.2%} at eps = {:.5f} - cum. time: {:.1f} s'.format(
                                 counter, self.target_class, acc.float().mean(), self.eps, time.time() - startt))
-
         return adv

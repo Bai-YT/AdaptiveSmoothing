@@ -11,8 +11,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 
-from autoattack.other_utils import L0_norm, L1_norm, L2_norm
-from autoattack.checks import check_zero_gradients
+from autoattack.other_utils import L0_norm
+from comp_autoattack.checks import check_zero_gradients
 from adaptive_smoothing.losses import SimpleCompLoss, DLRLoss
 
 
@@ -107,6 +107,7 @@ class APGDAttack():
                  device=None,
                  use_largereps=False,
                  is_tf_model=False,
+                 check_zero_grad=True,
                  logger=None):
         """
         AutoPGD implementation in PyTorch
@@ -131,6 +132,7 @@ class APGDAttack():
         self.eps_orig = eps + 0.
         self.is_tf_model = is_tf_model
         self.y_target = None
+        self.check_zero_grad = check_zero_grad
         self.logger = logger
 
     def init_hyperparam(self, x):
@@ -194,14 +196,16 @@ class APGDAttack():
                 logits, loss_indiv, grad_curr = criterion_indiv(x_adv, y, self.y_target)
             grad += grad_curr
         else:  # PyTorch model
+            assert x_adv.requires_grad
             with torch.enable_grad():
                 if self.comp:
-                    logits, x, alphas = self.model(x_adv)
+                    logits, gammas = self.model(x_adv)
                 else:
                     logits = self.model(x_adv)
 
                 if 'randomized' in self.loss:  # Randomized loss
-                    loss_indiv = criterion_indiv(logits, y, alphas, sup_labels=torch.ones_like(alphas))
+                    loss_indiv = criterion_indiv(
+                        logits, y, gammas, sup_labels=torch.ones_like(gammas))
                 else:
                     loss_indiv = criterion_indiv(logits, y)
                 
@@ -260,11 +264,13 @@ class APGDAttack():
             elif self.loss == 'ce-targeted':
                 criterion_indiv = self.ce_loss_targeted
             elif self.loss == 'ce-randomized':
-                criterion_indiv = SimpleCompLoss(nn.CrossEntropyLoss(reduction='none'), 
-                                                 w=self.w, reduction='none')
+                criterion_indiv = SimpleCompLoss(
+                    base_loss=nn.CrossEntropyLoss(reduction='none'), 
+                    w=self.w, reduction='none')
             elif self.loss == 'dlr-randomized':
-                criterion_indiv = SimpleCompLoss(base_loss=DLRLoss(y_target=self.y_target, reduction='none'), 
-                                                 w=self.w, reduction='none')
+                criterion_indiv = SimpleCompLoss(
+                    base_loss=DLRLoss(y_target=self.y_target, reduction='none'), 
+                    w=self.w, reduction='none')
             else:
                 raise ValueError('Unknown loss.')
 
@@ -276,7 +282,7 @@ class APGDAttack():
         grad /= float(self.eot_iter)
         grad_best = grad.clone()
 
-        if self.loss in ['dlr', 'dlr-targeted', 'dlr-randomized']:
+        if self.check_zero_grad and self.loss in ['dlr', 'dlr-targeted', 'dlr-randomized']:
             # check if there are zero gradients
             check_zero_gradients(grad, logger=self.logger)
 
@@ -285,7 +291,8 @@ class APGDAttack():
         loss_best = loss_indiv.detach().clone()
 
         alpha = 2. if self.norm in ['Linf', 'L2'] else 1. if self.norm in ['L1'] else 2e-2
-        step_size = alpha * self.eps * torch.ones([x.shape[0], *([1] * self.ndims)]).to(self.device).detach()
+        step_size = alpha * self.eps * torch.ones(
+            [x.shape[0], *([1] * self.ndims)]).to(self.device).detach()
         x_adv_old = x_adv.clone()
         k = self.n_iter_2 + 0
         if self.norm == 'L1':
@@ -316,9 +323,11 @@ class APGDAttack():
 
                 if self.norm == 'Linf':
                     x_adv_1 = x_adv + step_size * torch.sign(grad)
-                    x_adv_1 = torch.clamp(torch.min(torch.max(x_adv_1, x - self.eps), x + self.eps), 0.0, 1.0)
-                    x_adv_1 = torch.clamp(torch.min(torch.max(
-                        x_adv + (x_adv_1 - x_adv) * a + grad2 * (1 - a), x - self.eps), x + self.eps), 0.0, 1.0)
+                    x_adv_1 = torch.clamp(
+                        torch.min(torch.max(x_adv_1, x - self.eps), x + self.eps), 0.0, 1.0)
+                    x_adv_1 = torch.clamp(torch.min(
+                        torch.max(x_adv + (x_adv_1 - x_adv) * a + grad2 * (1 - a), x - self.eps),
+                        x + self.eps), 0.0, 1.0)
 
                 elif self.norm == 'L2':
                     x_adv_1 = x_adv + step_size * self.normalize(grad)
@@ -377,8 +386,10 @@ class APGDAttack():
                 counter3 += 1
                 if counter3 == k:
                     if self.norm in ['Linf', 'L2']:
-                        fl_oscillation = self.check_oscillation(loss_steps, i, k, loss_best, k3=self.thr_decr)
-                        fl_reduce_no_impr = (1. - reduced_last_check) * (loss_best_last_check >= loss_best).float()
+                        fl_oscillation = self.check_oscillation(
+                            loss_steps, i, k, loss_best, k3=self.thr_decr)
+                        fl_reduce_no_impr = (1. - reduced_last_check) * (
+                            loss_best_last_check >= loss_best).float()
                         fl_oscillation = torch.max(fl_oscillation, fl_reduce_no_impr)
                         reduced_last_check = fl_oscillation.clone()
                         loss_best_last_check = loss_best.clone()
@@ -413,7 +424,7 @@ class APGDAttack():
         :param best_loss:   if True the points attaining highest loss
                             are returned, otherwise adversarial examples
         """
-        assert self.loss in ['ce', 'dlr', 'ce-randomized', 'dlr-randomized']  # 'ce-targeted-cfts'
+        assert self.loss in ['ce', 'dlr', 'ce-randomized', 'dlr-randomized']
         if not y is None and len(y.shape) == 0:
             x.unsqueeze_(0)
             y.unsqueeze_(0)
@@ -423,7 +434,7 @@ class APGDAttack():
         if self.is_tf_model:
             y_pred = self.model.predict(x).max(1)[1]
         else:  # PyTorch Model
-            preds, x, _ = self.model(x)
+            preds, gammas = self.model(x)
             y_pred = preds.max(1)[1]
         if y is None:
             y = y_pred.detach().clone().long().to(self.device)
@@ -462,7 +473,9 @@ class APGDAttack():
                 if ind_to_fool.numel() != 0:
                     x_to_fool = x[ind_to_fool].clone()
                     y_to_fool = y[ind_to_fool].clone()
-                    if torch.is_tensor(self.eps) and len(self.eps.shape) > 1:  # Check whether eps is tensor
+
+                    # Check whether eps is tensor
+                    if torch.is_tensor(self.eps) and len(self.eps.shape) > 1:
                         self.eps = self.eps[ind_to_fool]
                         self.w = self.w[ind_to_fool]
                         if self.y_target is not None:
@@ -504,7 +517,7 @@ class APGDAttack():
         else:
             x_init = x + torch.randn_like(x)
             x_init += L1_projection(x, x_init - x, 1. * float(epss[0]))
-        eps_target = float(epss[-1])
+
         if self.verbose:
             print('total iter: {}'.format(sum(iters)))
         for eps, niter in zip(epss, iters):
@@ -512,7 +525,7 @@ class APGDAttack():
                 print('using eps: {:.2f}'.format(eps))
             self.n_iter = niter + 0
             self.eps = eps + 0.
-            #
+
             if not x_init is None:
                 x_init += L1_projection(x, x_init - x, 1. * eps)
             x_init, acc, loss, x_adv = self.attack_single_run(x, y, x_init=x_init)
@@ -543,10 +556,11 @@ class APGDAttack_targeted(APGDAttack):
         """
         AutoPGD on the targeted DLR loss
         """
-        super(APGDAttack_targeted, self).__init__(predict, n_iter=n_iter, norm=norm, n_restarts=n_restarts, w=w,
-                                                  eps=eps, seed=seed, loss=loss, eot_iter=eot_iter, comp=comp,
-                                                  rho=rho, topk=topk, verbose=verbose, device=device, logger=logger,
-                                                  use_largereps=use_largereps, is_tf_model=is_tf_model)
+        super(APGDAttack_targeted, self).__init__(
+            predict, n_iter=n_iter, norm=norm, n_restarts=n_restarts, w=w,
+            eps=eps, seed=seed, loss=loss, eot_iter=eot_iter, comp=comp,
+            rho=rho, topk=topk, verbose=verbose, device=device, logger=logger,
+            use_largereps=use_largereps, is_tf_model=is_tf_model)
 
         self.y_target = None
         self.n_target_classes = n_target_classes
@@ -554,7 +568,8 @@ class APGDAttack_targeted(APGDAttack):
     def dlr_loss_targeted(self, x, y):
         x_sorted, ind_sorted = x.sort(dim=1)
         u = torch.arange(x.shape[0])
-        return -(x[u, y] - x[u, self.y_target]) / (x_sorted[:, -1] - .5 * (x_sorted[:, -3] + x_sorted[:, -4]) + 1e-12)
+        return -(x[u, y] - x[u, self.y_target]) / (
+            x_sorted[:, -1] - .5 * (x_sorted[:, -3] + x_sorted[:, -4]) + 1e-12)
 
     def ce_loss_targeted(self, x, y):
         return -1. * F.cross_entropy(x, self.y_target, reduction='none')
@@ -572,7 +587,7 @@ class APGDAttack_targeted(APGDAttack):
 
         x = x.detach().clone().float().to(self.device)
         if not self.is_tf_model:  # PyTorch Model
-            preds, x, _ = self.model(x)
+            preds, gammas = self.model(x)
             y_pred = preds.max(1)[1]
         else:
             y_pred = self.model.predict(x).max(1)[1]
@@ -613,7 +628,7 @@ class APGDAttack_targeted(APGDAttack):
                     y_to_fool = y[ind_to_fool].clone()
 
                     if not self.is_tf_model:  # PyTorch Model
-                        output, x_to_fool, _ = self.model(x_to_fool)
+                        output, gammas = self.model(x_to_fool)
                     else:
                         output = self.model.predict(x_to_fool)
                     self.y_target = output.sort(dim=1)[1][:, -target_class]

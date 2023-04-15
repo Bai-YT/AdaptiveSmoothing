@@ -125,19 +125,23 @@ class ResNetV2(nn.Module):
         self.body = nn.Sequential(OrderedDict([
             ('block1', nn.Sequential(OrderedDict(
                 [('unit01', PreActBottleneck(cin=64*wf, cout=256*wf, cmid=64*wf))] +
-                [(f'unit{i:02d}', PreActBottleneck(cin=256*wf, cout=256*wf, cmid=64*wf)) for i in range(2, block_units[0] + 1)],
+                [(f'unit{i:02d}', PreActBottleneck(cin=256*wf, cout=256*wf, cmid=64*wf))
+                 for i in range(2, block_units[0] + 1)],
             ))),
             ('block2', nn.Sequential(OrderedDict(
                 [('unit01', PreActBottleneck(cin=256*wf, cout=512*wf, cmid=128*wf, stride=2))] +
-                [(f'unit{i:02d}', PreActBottleneck(cin=512*wf, cout=512*wf, cmid=128*wf)) for i in range(2, block_units[1] + 1)],
+                [(f'unit{i:02d}', PreActBottleneck(cin=512*wf, cout=512*wf, cmid=128*wf))
+                 for i in range(2, block_units[1] + 1)],
             ))),
             ('block3', nn.Sequential(OrderedDict(
                 [('unit01', PreActBottleneck(cin=512*wf, cout=1024*wf, cmid=256*wf, stride=2))] +
-                [(f'unit{i:02d}', PreActBottleneck(cin=1024*wf, cout=1024*wf, cmid=256*wf)) for i in range(2, block_units[2] + 1)],
+                [(f'unit{i:02d}', PreActBottleneck(cin=1024*wf, cout=1024*wf, cmid=256*wf))
+                 for i in range(2, block_units[2] + 1)],
             ))),
             ('block4', nn.Sequential(OrderedDict(
                 [('unit01', PreActBottleneck(cin=1024*wf, cout=2048*wf, cmid=512*wf, stride=2))] +
-                [(f'unit{i:02d}', PreActBottleneck(cin=2048*wf, cout=2048*wf, cmid=512*wf)) for i in range(2, block_units[3] + 1)],
+                [(f'unit{i:02d}', PreActBottleneck(cin=2048*wf, cout=2048*wf, cmid=512*wf))
+                 for i in range(2, block_units[3] + 1)],
             ))),
         ]))
 
@@ -150,7 +154,7 @@ class ResNetV2(nn.Module):
         ]))
 
     def forward(self, x):
-        x = (x - self.mean.to(x.device)) / (self.std.to(x.device) + 1e-8)
+        x = (x - self.mean.to(x.device)) / (self.std.to(x.device) + 1e-8)  # Normalization
         feat1 = self.root(x)
         feat1 = self.body[0](feat1)
         feat2 = self.body[1](feat1)
@@ -162,9 +166,11 @@ class ResNetV2(nn.Module):
 
     def load_from(self, weights, prefix='resnet/'):
         with torch.no_grad():
-            self.root.conv.weight.copy_(tf2th(weights[f'{prefix}root_block/standardized_conv2d/kernel']))
+            self.root.conv.weight.copy_(
+                tf2th(weights[f'{prefix}root_block/standardized_conv2d/kernel']))
             self.head.gn.weight.copy_(tf2th(weights[f'{prefix}group_norm/gamma']))
             self.head.gn.bias.copy_(tf2th(weights[f'{prefix}group_norm/beta']))
+
             if self.zero_head:
                 nn.init.zeros_(self.head.conv.weight)
                 nn.init.zeros_(self.head.conv.bias)
