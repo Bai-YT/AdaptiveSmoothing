@@ -29,15 +29,7 @@ def get_pretrained_model(root_dir, std_load_path, rob_load_path, comp_load_path,
 
         # Load policy network
         comp_model.policy_net.load_state_dict(state_dict["model"])
-
         # Load BN stats
-        # Process state dict (move BN outside of model)
-        if "bn.running_mean" in state_dict["model"].keys():
-            state_dict["bn"] = OrderedDict()
-            for key in ["running_mean", "running_var", "num_batches_tracked"]:
-                state_dict["bn"][key] = state_dict["model"][f"bn.{key}"]
-                del state_dict["model"][f"bn.{key}"]
-        # Load processed state dict
         comp_model.bn.load_state_dict(state_dict["bn"])
 
     # Set output mean and std div. Only applies when the policy network is active.
