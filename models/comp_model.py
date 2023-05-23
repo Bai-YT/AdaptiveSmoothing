@@ -14,7 +14,6 @@ class CompositeModel(nn.Module):
     enable_autocast = False
     sigmoid = nn.Sigmoid()
     softmax = nn.Softmax(dim=1)
-    gamma = -np.inf
 
     def __init__(self, models: List[nn.Module], forward_settings):
         super().__init__()
@@ -49,7 +48,6 @@ class CompositeModel(nn.Module):
 
         # Batch norm layer for the mixing network (act on gamma)
         self.bn = nn.BatchNorm1d(num_features=1, affine=False, momentum=0.01)
-        self.softmax = nn.Softmax(dim=1)
         self.resize = forward_settings["std_model_type"] in ["rn50", "rn152"]
 
         # Set gamma and the use_policy flag
@@ -58,6 +56,7 @@ class CompositeModel(nn.Module):
         self.scale_alpha = not self.training
 
         # Gamma and alpha scale and bias
+        self.gamma = -np.inf
         self.gamma_scale = nn.parameter.Parameter(torch.tensor(1.), requires_grad=False)  
         self.gamma_bias = nn.parameter.Parameter(torch.tensor(0.), requires_grad=False)
         self.alpha_scale = nn.parameter.Parameter(torch.tensor(1.), requires_grad=False)
@@ -69,19 +68,6 @@ class CompositeModel(nn.Module):
             self.set_alpha_scale_bias(forward_settings["alpha_scale"], forward_settings["alpha_bias"])
         if "std_scale" in forward_settings.keys() and "rob_scale" in forward_settings.keys():
             self.set_base_model_scale(forward_settings["std_scale"], forward_settings["rob_scale"])
-
-    def set_gamma_value(self, gamma):
-        if self.use_policy:
-            self.gamma = gamma
-            print(f"gamma has been set to {self.gamma}, "
-                  "but the mixing network is active so the change is not effective.")
-        else:
-            self.gamma = gamma
-            print(f"Using fixed gamma={self.gamma}. No mixing network.")
-            if self.gamma == -np.inf:
-                print("Using the STD network only.")
-            elif self.gamma == np.inf:
-                print("Using the ROB network only.")
 
     def train(self, mode: bool=True, scale_alpha: bool=None):
         """Sets the mixing network and the BN in training mode. Overloads the train method of nn.Module.
@@ -105,6 +91,19 @@ class CompositeModel(nn.Module):
 
     def eval(self, scale_alpha: bool=None):
         return self.train(mode=False, scale_alpha=scale_alpha)
+
+    def set_gamma_value(self, gamma):
+        if self.use_policy:
+            self.gamma = gamma
+            print(f"gamma has been set to {self.gamma}, "
+                  "but the mixing network is active so the change is not effective.")
+        else:
+            self.gamma = gamma
+            print(f"Using fixed gamma={self.gamma}. No mixing network.")
+            if self.gamma == -np.inf:
+                print("Using the STD network only.")
+            elif self.gamma == np.inf:
+                print("Using the ROB network only.")
 
     def set_gamma_scale_bias(self, gamma_scale, gamma_bias):
         device = self.gamma_bias.device
