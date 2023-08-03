@@ -6,7 +6,7 @@
   "number_forward_passes": null,
   "dataset": "cifar100",
   "venue": "ArXiv",
-  "architecture": "ResNet-152 + WideResNet-70-16",
+  "architecture": "ResNet-152 + WideResNet-70-16 + MixingNet",
   "eps": 0.03137254901960784,
   "clean_acc": 0.8018,
   "reported": null,
