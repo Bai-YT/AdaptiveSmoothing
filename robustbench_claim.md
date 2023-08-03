@@ -14,7 +14,7 @@
 - **eps**: 8 / 255
 - **Clean accuracy**: 85.21 %
 - **Robust accuracy**: 38.72 %
-- **Additional data**: True. The accurate base classifier was pretrained on ImageNet-21k. Additionally, the robust base classifier used 50M synthetic images.
+- **Additional data**: True. The accurate base classifier was pre-trained on ImageNet-21k. Additionally, the robust base classifier used 50M synthetic images.
 - **Evaluation method**: AutoAttack
 - **Checkpoint and code**: The checkpoints and code are available [here](https://github.com/Bai-YT/AdaptiveSmoothing).
 
@@ -38,7 +38,7 @@
 - **eps**: 8 / 255
 - **Clean accuracy**: 95.03 %
 - **Robust accuracy**: 67.97 %
-- **Additional data**: True. The accurate base classifier was pretrained on ImageNet-21k. Additionally, the robust base classifier used 50M synthetic images.
+- **Additional data**: True. The accurate base classifier was pre-trained on ImageNet-21k. Additionally, the robust base classifier used 50M synthetic images.
 - **Evaluation method**: AutoAttack
 - **Checkpoint and code**: The checkpoints and code are available [here](https://github.com/Bai-YT/AdaptiveSmoothing).
 
