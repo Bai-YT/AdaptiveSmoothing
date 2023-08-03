@@ -62,11 +62,15 @@ def run(training, config, debug):
 
     comp_trainer._comp_model.enable_autocast = training
     if training:  # Training
-        comp_trainer.train(save_path=log_path, load_path=load_path,
-                           eval_freq=config['training_settings']['eval_freq'], debug=debug)
+        comp_trainer.train(
+            save_path=log_path, load_path=load_path,
+            eval_freq=config['training_settings']['eval_freq'], debug=debug
+        )
     else:  # Evaluating
-        comp_trainer.evaluate(load_path=load_path, save_path=log_path, 
-                              auto_attack=config['pgd_settings']['use_aa'], full=False)
+        comp_trainer.evaluate(
+            load_path=load_path, save_path=log_path, 
+            auto_attack=config['pgd_settings']['use_aa'], full=False
+        )
         # comp_trainer.evaluate_adap(clean_only=True, full=True)
         # comp_trainer.evaluate_data()
 

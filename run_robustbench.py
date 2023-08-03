@@ -93,8 +93,11 @@ def run_robustbench(root_dir, model_name, fp16):
 
     # Save state dict
     makedirs(join("model_info", dataset, threat_model), exist_ok=True)
-    torch.save(model.state_dict(), 
-               join("model_info", dataset, threat_model, f"{model_full_name}.pt"))
+    save_sd = model.cpu().state_dict()
+    if "ema_model" in save_sd.keys():  # Convert to the format compatible with RobustBench
+        save_sd["model"] = save_sd["ema_model"]
+        del save_sd["ema_model"]
+    torch.save(save_sd, f"model_info/{dataset}/{threat_model}/{model_full_name}.pt")
 
     # Run RobustBench benchmark!
     seed_all(20230331)
