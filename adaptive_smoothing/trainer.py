@@ -59,7 +59,8 @@ class CompModelTrainer:
             batch_size_train=self.batch_size_train * 5 // self.num_blocks,
             batch_size_test=self.batch_size_test * 5 // self.num_blocks,
             train_shuffle=dataset_settings["train_shuffle"],
-            train_with_test=self.train_with_test)
+            train_with_test=self.train_with_test
+        )
         (comp_model, self.trainloader, self.testloader, self.trainloader_fast, 
          self.transform_train, self.transform_test) = cmdl_and_loaders
 
@@ -145,10 +146,12 @@ class CompModelTrainer:
 
         # Gamma values used for generating pre-attacked data
         self.adv_gammas = dataset[
-            "test_adv_gammas" if self.train_with_test else "train_adv_gammas"]
+            "test_adv_gammas" if self.train_with_test else "train_adv_gammas"
+        ]
         gammas = [
             self.adv_gammas[int(i * (10000 if self.train_with_test else 50000))].item()
-            for i in range(2, self.num_blocks)]
+            for i in range(2, self.num_blocks)
+        ]
         print(f"Pre-attacked gammas: {gammas}.")
         # Labels for the policy network
         # If adv_gammas < gamma_0,
@@ -274,12 +277,14 @@ class CompModelTrainer:
                 else:
                     if auto_attack:
                         adv_images = self.aa_adversary.run_standard_evaluation(
-                            images, labels, bs=self.aa_batch_size, perform_checks=False)
+                            images, labels, bs=self.aa_batch_size, perform_checks=False
+                        )
                     else:
                         adv_images = self.pgd_adversary.pgd_attack_eval(
                             images, labels, pgd_type=self.pgd_adversary.pgd_type, pgd_eps=pgd_eps, 
                             pgd_alpha=pgd_alpha, pgd_iters=pgd_iters, loss_type=self.pgd_eval_loss, 
-                            random_start=False)
+                            random_start=False
+                        )
 
                 if save_adv_imgs and not clean_only:
                     try:
@@ -673,7 +678,8 @@ class CompModelTrainer:
         self.evaluate(
             pgd_eps=self.pgd_adversary.pgd_eps, pgd_alpha=self.pgd_adversary.pgd_alpha_test,
             pgd_iters=self.pgd_adversary.pgd_iters_test, save_adv_imgs=self.save_eval_imgs, 
-            auto_attack=self.use_aa, full=False, debug=debug)
+            auto_attack=self.use_aa, full=False, debug=debug
+        )
 
         self.comp_model.train()
         self._comp_model.set_gamma_scale_bias(*self.gamma_consts["train"])
@@ -683,7 +689,8 @@ class CompModelTrainer:
         ep_start, ba, img_inds = utils.load_ckpt(
             self.comp_model, self.optimizer, self.scheduler, self.warmup_scheduler, self.grad_scaler,
             lr=self.training_settings['lr'], load_path=load_path, batch_per_ep=len(self.trainloader),
-            enable_BN=enable_BN, reset_scheduler=reset_scheduler, device=self.device)
+            enable_BN=enable_BN, reset_scheduler=reset_scheduler, device=self.device
+        )
 
         if ep_start % 5 == 1 and self.n is not None:
             self.ba, self.img_inds = 0, torch.randperm(self.n)

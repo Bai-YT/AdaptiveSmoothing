@@ -14,7 +14,7 @@
 - **eps**: 8 / 255
 - **Clean accuracy**: 85.21 %
 - **Robust accuracy**: 38.72 %
-- **Additional data**: True (via the accurate base classifier. Additionally, the robust base classifier requires 50M synthetic images.)
+- **Additional data**: True. The accurate base classifier was pretrained on ImageNet-21k. Additionally, the robust base classifier used 50M synthetic images.
 - **Evaluation method**: AutoAttack
 - **Checkpoint and code**: The checkpoints and code are available [here](https://github.com/Bai-YT/AdaptiveSmoothing).
 
@@ -26,7 +26,19 @@
 - **eps**: 8 / 255
 - **Clean accuracy**: 80.18 %
 - **Robust accuracy**: 35.15 %
-- **Additional data**: True (via both the accurate base classifier and the robust base classifier.)
+- **Additional data**: True. The accurate base classifier and the robust base classifier both used additional training data.
+- **Evaluation method**: AutoAttack
+- **Checkpoint and code**: The checkpoints and code are available [here](https://github.com/Bai-YT/AdaptiveSmoothing).
+
+## Model 3
+
+- **Architecture**: ResNet-152 + WideResNet-70-16 + mixing network
+- **Dataset**: CIFAR-10
+- **Threat Model**: Linf
+- **eps**: 8 / 255
+- **Clean accuracy**: 95.03 %
+- **Robust accuracy**: 67.97 %
+- **Additional data**: True. The accurate base classifier was pretrained on ImageNet-21k. Additionally, the robust base classifier used 50M synthetic images.
 - **Evaluation method**: AutoAttack
 - **Checkpoint and code**: The checkpoints and code are available [here](https://github.com/Bai-YT/AdaptiveSmoothing).
 

@@ -26,7 +26,9 @@ def get_comp_model(forward_settings, std_load_path, rob_load_path, num_classes=1
 
     if std_model_type in ['rn50', 'rn152']:
         model_name = "BiT-M-R50x1" if std_model_type == 'rn50' else "BiT-M-R152x2"
-        std_model = bit_rn.KNOWN_MODELS[model_name](head_size=num_classes, zero_head=False)
+        std_model = bit_rn.KNOWN_MODELS[model_name](
+            head_size=num_classes, zero_head=False
+        )
         # Load model from disk
         try:
             std_model.load_from(np.load(std_load_path))
@@ -40,8 +42,7 @@ def get_comp_model(forward_settings, std_load_path, rob_load_path, num_classes=1
         std_model.load_state_dict(torch.load(std_load_path))
 
     std_model.eval()
-    for param in std_model.parameters():
-        param.requires_grad = False
+    std_model.requires_grad_(False)
 
     # Robust base model
     assert rob_model_type in ["rn18", "wrn", 'wrn7016', 'wrn7016_silu']
@@ -51,12 +52,14 @@ def get_comp_model(forward_settings, std_load_path, rob_load_path, num_classes=1
         # Use DeepMind's Swish
         rob_model = dm_rn.WideResNet(
             num_classes=num_classes, activation_fn=dm_rn.Swish,
-            depth=70, width=16, mean=dm_rn.CIFAR100_MEAN, std=dm_rn.CIFAR100_STD)
+            depth=70, width=16, mean=dm_rn.CIFAR100_MEAN, std=dm_rn.CIFAR100_STD
+        )
     elif rob_model_type == 'wrn7016_silu':
         # Use PyTorch's SiLU
         rob_model = dm_rn.WideResNet(
             num_classes=num_classes, activation_fn=nn.SiLU, 
-            depth=70, width=16, mean=dm_rn.CIFAR100_MEAN, std=dm_rn.CIFAR100_STD)
+            depth=70, width=16, mean=dm_rn.CIFAR100_MEAN, std=dm_rn.CIFAR100_STD
+        )
     elif rob_model_type == "wrn":
         rob_model = trade_wrn.WideResNet()
     else:
@@ -73,38 +76,43 @@ def get_comp_model(forward_settings, std_load_path, rob_load_path, num_classes=1
         rob_model.load_state_dict(state_dict)
 
     rob_model.eval()
-    for param in rob_model.parameters():
-        param.requires_grad = False
+    rob_model.requires_grad_(False)
 
     # Comp model
     return CompositeModel(
-        [std_model, rob_model], forward_settings=forward_settings).to(device)
+        [std_model, rob_model], forward_settings=forward_settings
+    ).to(device)
 
 
-def get_cmodel_and_loaders(forward_settings, std_load_path, rob_load_path, 
-                           dataset_path, dataset_name="CIFAR-10",
-                           batch_size_train=500, batch_size_test=500, 
-                           train_with_test=False, train_shuffle=True):
-
+def get_cmodel_and_loaders(
+    forward_settings, std_load_path, rob_load_path, dataset_path,
+    dataset_name="CIFAR-10", batch_size_train=500, batch_size_test=500, 
+    train_with_test=False, train_shuffle=True
+):
     # Data transforms
     transform_test = transforms.Compose([transforms.ToTensor()])
-    transform_train = transforms.Compose(
-        [transforms.ToTensor(), transforms.RandomHorizontalFlip(p=.5),
-            transforms.RandomCrop(32, padding=4)])
+    transform_train = transforms.Compose([
+        transforms.ToTensor(), transforms.RandomHorizontalFlip(p=.5),
+        transforms.RandomCrop(32, padding=4)
+    ])
 
     # Datasets
     if dataset_name == "CIFAR-10":
         train_set = datasets.CIFAR10(
             root=dataset_path, train=(not train_with_test),
-            download=True, transform=transform_train)
+            download=True, transform=transform_train
+        )
         test_set = datasets.CIFAR10(
-            root=dataset_path, train=False, download=True, transform=transform_test)
+            root=dataset_path, train=False, download=True, transform=transform_test
+        )
     elif dataset_name == "CIFAR-100":
         train_set = datasets.CIFAR100(
             root=dataset_path, train=(not train_with_test),
-            download=True, transform=transform_train)
+            download=True, transform=transform_train
+        )
         test_set = datasets.CIFAR100(
-            root=dataset_path, train=False, download=True, transform=transform_test)
+            root=dataset_path, train=False, download=True, transform=transform_test
+        )
     else:
         raise ValueError('Unknown dataset name.')
 
@@ -121,15 +129,27 @@ def get_cmodel_and_loaders(forward_settings, std_load_path, rob_load_path,
 
     # Composite model
     comp_model = get_comp_model(
-        forward_settings, std_load_path, rob_load_path, num_classes=len(test_set.classes))
+        forward_settings, std_load_path, rob_load_path,
+        num_classes=len(test_set.classes)
+    )
 
     return (comp_model, trainloader, testloader, 
             trainloader_fast, transform_train, transform_test)
 
 
-def load_ckpt(comp_model, optimizer, scheduler, warmup_scheduler, grad_scaler, lr, load_path,
-              batch_per_ep, enable_BN=False, reset_scheduler=False, device='cpu'):
+def process_state_dict_bn(state_dict):
+    # Process state dict (remove "model" prefix)
+    if "bn.running_mean" in state_dict["model"].keys():
+        state_dict["bn"] = OrderedDict()
+        for key in ["running_mean", "running_var", "num_batches_tracked"]:
+            state_dict["bn"][key] = state_dict["model"][f"bn.{key}"]
+            del state_dict["model"][f"bn.{key}"]
 
+
+def load_ckpt(
+    comp_model, optimizer, scheduler, warmup_scheduler, grad_scaler, lr,
+    load_path, batch_per_ep, enable_BN=False, reset_scheduler=False, device='cpu'
+):
     print(f"Loading checkpoint {load_path}.")
     state_dict = torch.load(load_path, map_location=device)
 
@@ -178,13 +198,7 @@ def load_ckpt(comp_model, optimizer, scheduler, warmup_scheduler, grad_scaler, l
         else state_dict["ep"])
 
     # Batch normalization
-    # Process state dict (remove "model" prefix)
-    if "bn.running_mean" in state_dict["model"].keys():
-        state_dict["bn"] = OrderedDict()
-        for key in ["running_mean", "running_var", "num_batches_tracked"]:
-            state_dict["bn"][key] = state_dict["model"][f"bn.{key}"]
-            del state_dict["model"][f"bn.{key}"]
-    # Load processed state dict
+    process_state_dict_bn(state_dict)
     comp_model._comp_model.bn.load_state_dict(state_dict["bn"])
 
     # Gamma scale and bias (after BN)

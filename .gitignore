@@ -1,4 +1,5 @@
 .DS_Store
 checkpoints
 data
+model_info/**/*.pt
 __pycache__
