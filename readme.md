@@ -24,7 +24,7 @@ Make a directory `<YOUR_MODEL_ROOT_DIR>` at a desired path to store the model ch
 
 **Edited on August 3, 2023:**
 **We have added a CIFAR-10 model to our results.**
-- The accurate base classifier is a [Big Transfer (BiT)](https://github.com/google-research/big_transfer) ResNet-152 model finetuned on CIFAR-10 -- [download](https://drive.google.com/uc?export=download&id=1kdzhroeI9-pYuy0WQPF-DJH3-tDYJbvj).
+- The accurate base classifier is a [Big Transfer (BiT)](https://github.com/google-research/big_transfer) ResNet-152 model finetuned on CIFAR-10 -- [download](https://drive.google.com/uc?export=download&id=16GYQn0bwiMLDEGQKv38RTQCBmhqZMvna).
 - The robust base classifier is a WideResNet-70-16 model from [this repo](https://github.com/wzekai99/DM-Improves-AT) -- [download](https://huggingface.co/wzekai99/DM-Improves-AT/resolve/main/checkpoint/cifar10_linf_wrn70-16.pt) and rename as `cifar10_linf_edm_wrn70-16.pt`.
 - The corresponding mixing network -- [download](https://drive.google.com/uc?export=download&id=14uldY-iVxvQqxSu0Gvan2FCkp266dDt5).
 
