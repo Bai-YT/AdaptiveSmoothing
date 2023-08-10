@@ -35,7 +35,8 @@ def get_comp_model(forward_settings, std_load_path, rob_load_path, num_classes=1
         except:
             std_model = nn.DataParallel(std_model)
             std_model.load_state_dict(
-                torch.load(std_load_path, map_location=device)["model"])
+                torch.load(std_load_path, map_location=device)["model"]
+            )
             std_model = std_model.module
     else:
         std_model = small_rn.ResNet18()
@@ -48,22 +49,24 @@ def get_comp_model(forward_settings, std_load_path, rob_load_path, num_classes=1
     assert rob_model_type in ["rn18", "wrn", 'wrn7016', 'wrn7016_silu']
     print(f"Loading robust model: {rob_model_type} from {rob_load_path}...")
 
+    mean = dm_rn.CIFAR100_MEAN if num_classes == 100 else dm_rn.CIFAR10_MEAN
+    std = dm_rn.CIFAR100_STD if num_classes == 100 else dm_rn.CIFAR10_STD
     if rob_model_type == 'wrn7016':
         # Use DeepMind's Swish
         rob_model = dm_rn.WideResNet(
             num_classes=num_classes, activation_fn=dm_rn.Swish,
-            depth=70, width=16, mean=dm_rn.CIFAR100_MEAN, std=dm_rn.CIFAR100_STD
+            depth=70, width=16, mean=mean, std=std
         )
     elif rob_model_type == 'wrn7016_silu':
         # Use PyTorch's SiLU
         rob_model = dm_rn.WideResNet(
             num_classes=num_classes, activation_fn=nn.SiLU, 
-            depth=70, width=16, mean=dm_rn.CIFAR100_MEAN, std=dm_rn.CIFAR100_STD
+            depth=70, width=16, mean=mean, std=std
         )
     elif rob_model_type == "wrn":
         rob_model = trade_wrn.WideResNet()
     else:
-        rob_model = small_rn.ResNet18()
+        rob_model = small_rn.ResNet18()  # Normalization handled in class init
 
     state_dict = torch.load(rob_load_path)
     if rob_model_type == 'wrn7016_silu':
@@ -119,13 +122,16 @@ def get_cmodel_and_loaders(
     # Data loaders
     trainloader = DataLoader(
         train_set, batch_size=batch_size_train, pin_memory=True, 
-        shuffle=train_shuffle, num_workers=4, drop_last=True)
+        shuffle=train_shuffle, num_workers=4, drop_last=True
+    )
     trainloader_fast = DataLoader(
         train_set, batch_size=batch_size_train * 9, pin_memory=True, 
-        shuffle=train_shuffle, num_workers=4, drop_last=True)
+        shuffle=train_shuffle, num_workers=4, drop_last=True
+    )
     testloader = DataLoader(
         test_set, batch_size=batch_size_test, pin_memory=True, 
-        shuffle=False, num_workers=4, drop_last=False)
+        shuffle=False, num_workers=4, drop_last=False
+    )
 
     # Composite model
     comp_model = get_comp_model(
@@ -133,8 +139,8 @@ def get_cmodel_and_loaders(
         num_classes=len(test_set.classes)
     )
 
-    return (comp_model, trainloader, testloader, 
-            trainloader_fast, transform_train, transform_test)
+    return comp_model, trainloader, testloader, \
+        trainloader_fast, transform_train, transform_test
 
 
 def process_state_dict_bn(state_dict):
@@ -220,7 +226,8 @@ def load_ckpt(
             nn.parameter.Parameter(torch.empty((1,), device=device))
         comp_model.policy_net.module.bn.reset_parameters()
         optimizer.add_param_group(
-            {'params': comp_model.policy_net.module.bn.parameters()})
+            {'params': comp_model.policy_net.module.bn.parameters()}
+        )
 
     # Pre-attacked image indices
     img_inds = state_dict["img_inds"]

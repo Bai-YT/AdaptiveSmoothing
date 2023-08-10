@@ -65,17 +65,22 @@ class CompositeModel(nn.Module):
         self.rob_scale = nn.parameter.Parameter(torch.tensor(1.), requires_grad=False)
 
         if "alpha_scale" in forward_settings.keys() and "alpha_bias" in forward_settings.keys():
-            self.set_alpha_scale_bias(forward_settings["alpha_scale"], forward_settings["alpha_bias"])
+            self.set_alpha_scale_bias(
+                forward_settings["alpha_scale"], forward_settings["alpha_bias"]
+            )
         if "std_scale" in forward_settings.keys() and "rob_scale" in forward_settings.keys():
-            self.set_base_model_scale(forward_settings["std_scale"], forward_settings["rob_scale"])
+            self.set_base_model_scale(
+                forward_settings["std_scale"], forward_settings["rob_scale"]
+            )
 
     def train(self, mode: bool=True, scale_alpha: bool=None):
-        """Sets the mixing network and the BN in training mode. Overloads the train method of nn.Module.
+        """ Sets the mixing network and the BN in training mode.
+            Overloads the train method of nn.Module.
         Args:
-            mode (bool):        Whether to set training mode (``True``) or evaluation mode (``False``). 
-                                Default: ``True``.
+            mode (bool):        Whether to set training mode (True) or evaluation mode (False). 
+                                Default: True.
             scale_alpha (bool): Whether to scale alpha produced by the mixing network. 
-                                If ``None``, then scale alpha iff in eval mode. Default: ``None``.
+                                If None, then scale alpha iff in eval mode. Default: None.
         """
         if not isinstance(mode, bool):
             raise ValueError("Training mode is expected to be boolean")
@@ -112,7 +117,8 @@ class CompositeModel(nn.Module):
         print(f"The mixing network's gamma mean is set to {self.gamma_bias.item()}.")
         self.gamma_scale = nn.parameter.Parameter(
             torch.tensor(gamma_scale, device=device).float(), requires_grad=False)
-        print(f"The mixing network's gamma standard deviation is set to {self.gamma_scale.item()}.")
+        print("The mixing network's gamma standard deviation is set to "
+              f"{self.gamma_scale.item()}.")
 
     def set_alpha_scale_bias(self, alpha_scale, alpha_bias):
         assert alpha_bias >= 0, "The range of alpha cannot be negative."
@@ -188,14 +194,18 @@ class CompositeModel(nn.Module):
                 # Clamp gammas during training so that the output BN works the best
                 if self.training:
                     amean, astd = gammas.mean().item(), gammas.std().item()
-                    gammas = torch.clamp(gammas, min=(-.6) * astd + amean, max=.6 * astd + amean)
+                    gammas = torch.clamp(
+                        gammas, min=(-.6) * astd + amean, max=.6 * astd + amean
+                    )
 
                 # Apply BN and reparameterize
                 gammas = self.bn(gammas) * self.gamma_scale + self.gamma_bias
-                # print(gammas.mean().item(), gammas.median().item(), (gammas>=0).float().mean().item())
+                # print(gammas.mean().item(), gammas.median().item(),
+                #       (gammas>=0).float().mean().item())
                 alphas = self.sigmoid(gammas)
 
-                # If scale_alpha is specified (default option in eval mode), shrink the range of alphas.
+                # If scale_alpha is specified (default option in eval mode),
+                # shrink the range of alphas.
                 if self.scale_alpha:
                     alphas = alphas * self.alpha_scale + self.alpha_bias
 

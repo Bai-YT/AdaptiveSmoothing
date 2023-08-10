@@ -26,7 +26,9 @@ class MixingNetV3(nn.Module):
         self.planes = np.array(self.ind_planes).sum(axis=0)
 
         self.in_planes = self.planes[0]
-        self.layers = nn.ModuleList([self._make_layer(pl, stride=2) for pl in self.planes[1:]])
+        self.layers = nn.ModuleList(
+            [self._make_layer(pl, stride=2) for pl in self.planes[1:]]
+        )
 
         self.global_avg_pool = torch.nn.AdaptiveAvgPool2d((1, 1))
         self.linear = nn.Linear(self.planes[-1], 1, bias=False)

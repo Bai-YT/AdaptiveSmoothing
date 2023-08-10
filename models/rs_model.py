@@ -7,11 +7,13 @@ from statsmodels.stats.proportion import proportion_confint
 
 
 class Smooth(nn.Module):
-    # to abstain, Smooth returns this int
-    ABSTAIN = -1
 
-    def __init__(self, base_classifier: torch.nn.Module, 
-                 sigma: float, N: int, alpha: float, batch_size=None, num_classes=10):
+    ABSTAIN = -1  # to abstain, Smooth returns this int
+
+    def __init__(
+        self, base_classifier: torch.nn.Module, 
+        sigma: float, N: int, alpha: float, batch_size=None, num_classes=10
+    ):
         """
         :param base_classifier: maps from [batch x channel x height x width] 
                                 to [batch x num_classes]
@@ -27,7 +29,7 @@ class Smooth(nn.Module):
         self.mode = "predict"  # "certify"
 
     def certify(self, x: torch.tensor, n0: int, n: int, alpha: float, batch_size: int):
-        ########   THIS FUNCTION HAS NOT BEEN TESTED WITH ADAPTIVE SMOOTHING   ########
+        #######   THIS FUNCTION HAS NOT BEEN TESTED WITH ADAPTIVE SMOOTHING   #######
 
         """ Monte Carlo algorithm for certifying that g's prediction 
             around x is constant within some L2 radius.
@@ -41,7 +43,7 @@ class Smooth(nn.Module):
         :param alpha:       the failure probability
         :param batch_size:  batch size to use when evaluating the base classifier
         :return: (predicted class, certified radius)
-                 in the case of abstention, the class will be ABSTAIN and the radius 0.
+            in the case of abstention, the class will be ABSTAIN and the radius 0.
         """
         self.base_classifier.eval()
         # draw samples of f(x+ epsilon)
@@ -64,7 +66,7 @@ class Smooth(nn.Module):
         With probability at least 1 - alpha, the
         class returned by this method will equal g(x).
 
-        This function uses the hypothesis test described in https://arxiv.org/abs/1610.03944
+        Uses the hypothesis test described in https://arxiv.org/abs/1610.03944
         for identifying the top category of a multinomial distribution.
 
         :param x:           the input [num_imgs x channel x height x width]
@@ -78,12 +80,14 @@ class Smooth(nn.Module):
         return counts
 
     def _sample_noise(self, x: torch.tensor, num: int, batch_size) -> torch.tensor:
-        """ Sample the base classifier's prediction under noisy corruptions of the input x.
+        """ Sample the base classifier's prediction
+            under noisy corruptions of the input x.
 
-        :param x:   the input [num_imgs x channel x width x height]
-        :param num: number of samples to collect
-        :param batch_size:
-        :return:    a Tensor[int] of length num_classes containing the per-class counts
+        :param x:           The input [num_imgs x channel x width x height]
+        :param num:         Number of samples to collect
+        :param batch_size:  Batch size.
+        :return:            A Tensor[int] of length num_classes containing
+                            the per-class counts
         """
         with torch.no_grad():
             if len(x.shape) == 3:

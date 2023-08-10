@@ -9,14 +9,19 @@ class PreActBlock(nn.Module):
     def __init__(self, in_planes, planes, stride=1):
         super().__init__()
         self.bn1 = nn.BatchNorm2d(in_planes)
-        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.conv1 = nn.Conv2d(
+            in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False
+        )
         self.bn2 = nn.BatchNorm2d(planes)
-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
+        self.conv2 = nn.Conv2d(
+            planes, planes, kernel_size=3, stride=1, padding=1, bias=False
+        )
 
         self.shortcut = nn.Sequential()
         if stride != 1 or in_planes != self.expansion * planes:
             self.shortcut = nn.Sequential(
-                nn.Conv2d(in_planes, self.expansion * planes, kernel_size=1, stride=stride, bias=False)
+                nn.Conv2d(in_planes, self.expansion * planes,
+                          kernel_size=1, stride=stride, bias=False)
             )
 
     def forward(self, x):
@@ -33,15 +38,20 @@ class BasicBlock(nn.Module):
 
     def __init__(self, in_planes, planes, stride=1):
         super().__init__()
-        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.conv1 = nn.Conv2d(
+            in_planes, planes, kernel_size=3, stride=stride, padding=1, bias=False
+        )
         self.bn1 = nn.BatchNorm2d(planes)
-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=1, padding=1, bias=False)
+        self.conv2 = nn.Conv2d(
+            planes, planes, kernel_size=3, stride=1, padding=1, bias=False
+        )
         self.bn2 = nn.BatchNorm2d(planes)
 
         self.shortcut = nn.Sequential()
         if stride != 1 or in_planes != self.expansion * planes:
             self.shortcut = nn.Sequential(
-                nn.Conv2d(in_planes, self.expansion * planes, kernel_size=1, stride=stride, bias=False),
+                nn.Conv2d(in_planes, self.expansion * planes,
+                          kernel_size=1, stride=stride, bias=False),
                 nn.BatchNorm2d(self.expansion * planes)
             )
 
@@ -60,15 +70,20 @@ class Bottleneck(nn.Module):
         super().__init__()
         self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=1, bias=False)
         self.bn1 = nn.BatchNorm2d(planes)
-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.conv2 = nn.Conv2d(
+            planes, planes, kernel_size=3, stride=stride, padding=1, bias=False
+        )
         self.bn2 = nn.BatchNorm2d(planes)
-        self.conv3 = nn.Conv2d(planes, self.expansion * planes, kernel_size=1, bias=False)
+        self.conv3 = nn.Conv2d(
+            planes, self.expansion * planes, kernel_size=1, bias=False
+        )
         self.bn3 = nn.BatchNorm2d(self.expansion * planes)
 
         self.shortcut = nn.Sequential()
         if stride != 1 or in_planes != self.expansion * planes:
             self.shortcut = nn.Sequential(
-                nn.Conv2d(in_planes, self.expansion * planes, kernel_size=1, stride=stride, bias=False),
+                nn.Conv2d(in_planes, self.expansion * planes,
+                          kernel_size=1, stride=stride, bias=False),
                 nn.BatchNorm2d(self.expansion * planes)
             )
 
@@ -90,12 +105,14 @@ class ResNet(nn.Module):
         if self.normalize:
             if num_classes == 10:
                 print("Using the mean and std of CIFAR-10.")
-                self.transform = transforms.Normalize((0.4914, 0.4822 ,0.4465),
-                                                      (0.2470, 0.2435, 0.2616))
+                self.transform = transforms.Normalize(
+                    (0.4914, 0.4822 ,0.4465), (0.2470, 0.2435, 0.2616)
+                )
             elif num_classes == 100:
                 print("Using the mean and std of CIFAR-100.")
-                self.transform = transforms.Normalize((0.5071, 0.4867, 0.4408),
-                                                      (0.2675, 0.2565, 0.2761))
+                self.transform = transforms.Normalize(
+                    (0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761)
+                )
             else:
                 raise ValueError("Unknown dataset, cannot use normalization.")
 
@@ -130,8 +147,12 @@ class ResNet(nn.Module):
 
 
 def ResNet18(num_classes=10, normalize=False):
-    return ResNet(BasicBlock, [2, 2, 2, 2], num_classes=num_classes, normalize=normalize)
+    return ResNet(
+        BasicBlock, [2, 2, 2, 2], num_classes=num_classes, normalize=normalize
+    )
 
 
 def PreActResNet18(num_classes=10, normalize=False):
-    return ResNet(PreActBlock, [2, 2, 2, 2], num_classes=num_classes, normalize=normalize)
+    return ResNet(
+        PreActBlock, [2, 2, 2, 2], num_classes=num_classes, normalize=normalize
+    )

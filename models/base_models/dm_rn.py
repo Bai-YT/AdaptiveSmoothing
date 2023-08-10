@@ -1,5 +1,6 @@
 # Code borrowed from 
-# https://github.com/deepmind/deepmind-research/blob/master/adversarial_robustness/pytorch/model_zoo.py
+# https://github.com/deepmind/deepmind-research/blob/master/
+# adversarial_robustness/pytorch/model_zoo.py
 # (Gowal et al 2020)
 
 """WideResNet and PreActResNet implementations in PyTorch."""
@@ -53,16 +54,20 @@ class _Block(nn.Module):
         # We manually pad to obtain the same effect as `SAME` (necessary when
         # `stride` is different than 1).
         self.conv_0 = nn.Conv2d(
-            in_planes, out_planes, kernel_size=3, stride=stride, padding=0, bias=False)
+            in_planes, out_planes, kernel_size=3, stride=stride, padding=0, bias=False
+        )
 
         self.batchnorm_1 = nn.BatchNorm2d(out_planes)
         self.relu_1 = activation_fn(inplace=True)
-        self.conv_1 = nn.Conv2d(out_planes, out_planes, kernel_size=3, stride=1, padding=1, bias=False)
+        self.conv_1 = nn.Conv2d(
+            out_planes, out_planes, kernel_size=3, stride=1, padding=1, bias=False
+        )
 
         self.has_shortcut = in_planes != out_planes
         if self.has_shortcut:
             self.shortcut = nn.Conv2d(
-                in_planes, out_planes, kernel_size=1, stride=stride, padding=0, bias=False)
+                in_planes, out_planes, kernel_size=1, stride=stride, padding=0, bias=False
+            )
         else:
             self.shortcut = None
         self._stride = stride
@@ -91,12 +96,16 @@ class _Block(nn.Module):
 class _BlockGroup(nn.Module):
     """WideResNet block group."""
 
-    def __init__(self, num_blocks, in_planes, out_planes, stride, activation_fn=nn.ReLU):
+    def __init__(
+        self, num_blocks, in_planes, out_planes, stride, activation_fn=nn.ReLU
+    ):
         super().__init__()
         block = []
         for i in range(num_blocks):
-            block.append(_Block(i == 0 and in_planes or out_planes, out_planes,
-                            i == 0 and stride or 1, activation_fn=activation_fn))
+            block.append(
+                _Block(i == 0 and in_planes or out_planes, out_planes,
+                i == 0 and stride or 1, activation_fn=activation_fn)
+            )
         self.block = nn.Sequential(*block)
 
     def forward(self, x):
@@ -106,16 +115,17 @@ class _BlockGroup(nn.Module):
 class WideResNet(nn.Module):
     """WideResNet."""
 
-    def __init__(self,
-                 num_classes: int = 10,
-                 depth: int = 28,
-                 width: int = 10,
-                 activation_fn: nn.Module = nn.ReLU,
-                 mean: Union[Tuple[float, ...], float] = CIFAR10_MEAN,
-                 std: Union[Tuple[float, ...], float] = CIFAR10_STD,
-                 padding: int = 0,
-                 num_input_channels: int = 3):
-
+    def __init__(
+        self,
+        num_classes: int = 10,
+        depth: int = 28,
+        width: int = 10,
+        activation_fn: nn.Module = nn.ReLU,
+        mean: Union[Tuple[float, ...], float] = CIFAR10_MEAN,
+        std: Union[Tuple[float, ...], float] = CIFAR10_STD,
+        padding: int = 0,
+        num_input_channels: int = 3
+    ):
         super().__init__()
         self.mean = torch.tensor(mean).view(num_input_channels, 1, 1)
         self.std = torch.tensor(std).view(num_input_channels, 1, 1)
@@ -127,12 +137,18 @@ class WideResNet(nn.Module):
         assert (depth - 4) % 6 == 0
         num_blocks = (depth - 4) // 6
 
-        self.init_conv = nn.Conv2d(num_input_channels, num_channels[0],
-                                   kernel_size=3, stride=1, padding=1, bias=False)
+        self.init_conv = nn.Conv2d(
+            num_input_channels, num_channels[0],
+            kernel_size=3, stride=1, padding=1, bias=False
+        )
         self.layer = nn.Sequential(
-            _BlockGroup(num_blocks, num_channels[0], num_channels[1], 1, activation_fn=activation_fn),
-            _BlockGroup(num_blocks, num_channels[1], num_channels[2], 2, activation_fn=activation_fn),
-            _BlockGroup(num_blocks, num_channels[2], num_channels[3], 2, activation_fn=activation_fn))
+            _BlockGroup(num_blocks, num_channels[0], num_channels[1],
+                        1, activation_fn=activation_fn),
+            _BlockGroup(num_blocks, num_channels[1], num_channels[2],
+                        2, activation_fn=activation_fn),
+            _BlockGroup(num_blocks, num_channels[2], num_channels[3],
+                        2, activation_fn=activation_fn)
+        )
 
         self.batchnorm = nn.BatchNorm2d(num_channels[3])
         self.relu = activation_fn(inplace=True)
