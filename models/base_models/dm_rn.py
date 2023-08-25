@@ -106,16 +106,17 @@ class _BlockGroup(nn.Module):
 class WideResNet(nn.Module):
     """WideResNet."""
 
-    def __init__(self,
-                 num_classes: int = 10,
-                 depth: int = 28,
-                 width: int = 10,
-                 activation_fn: nn.Module = nn.ReLU,
-                 mean: Union[Tuple[float, ...], float] = CIFAR10_MEAN,
-                 std: Union[Tuple[float, ...], float] = CIFAR10_STD,
-                 padding: int = 0,
-                 num_input_channels: int = 3):
-
+    def __init__(
+        self,
+        num_classes: int = 10,
+        depth: int = 28,
+        width: int = 10,
+        activation_fn: nn.Module = nn.ReLU,
+        mean: Union[Tuple[float, ...], float] = CIFAR10_MEAN,
+        std: Union[Tuple[float, ...], float] = CIFAR10_STD,
+        padding: int = 0,
+        num_input_channels: int = 3
+    ):
         super().__init__()
         self.mean = torch.tensor(mean).view(num_input_channels, 1, 1)
         self.std = torch.tensor(std).view(num_input_channels, 1, 1)

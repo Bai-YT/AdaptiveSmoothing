@@ -36,8 +36,8 @@
 - **Dataset**: CIFAR-10
 - **Threat Model**: Linf
 - **eps**: 8 / 255
-- **Clean accuracy**: 95.03 %
-- **Robust accuracy**: 67.97 %
+- **Clean accuracy**: 95.23 %
+- **Robust accuracy**: 68.06 %
 - **Additional data**: True. The accurate base classifier was pre-trained on ImageNet-21k. Additionally, the robust base classifier used 50M synthetic images.
 - **Evaluation method**: AutoAttack
 - **Checkpoint and code**: The checkpoints and code are available [here](https://github.com/Bai-YT/AdaptiveSmoothing).

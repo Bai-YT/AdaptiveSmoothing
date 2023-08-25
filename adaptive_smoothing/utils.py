@@ -10,12 +10,13 @@ import random
 import numpy as np
 import os
 
-from models.base_models import small_rn, trade_wrn, bit_rn, dm_rn
+from models.base_models import small_rn, trades_wrn, bit_rn, dm_rn
 from models.comp_model import CompositeModel
 
 
-def get_comp_model(forward_settings, std_load_path, rob_load_path, num_classes=10):
-
+def get_comp_model(
+    forward_settings, std_load_path, rob_load_path, num_classes=10
+):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     std_model_type = forward_settings["std_model_type"]
     rob_model_type = forward_settings["rob_model_type"]
@@ -35,7 +36,8 @@ def get_comp_model(forward_settings, std_load_path, rob_load_path, num_classes=1
         except:
             std_model = nn.DataParallel(std_model)
             std_model.load_state_dict(
-                torch.load(std_load_path, map_location=device)["model"])
+                torch.load(std_load_path, map_location='cpu')["model"]
+            )
             std_model = std_model.module
     else:
         std_model = small_rn.ResNet18()
@@ -48,22 +50,24 @@ def get_comp_model(forward_settings, std_load_path, rob_load_path, num_classes=1
     assert rob_model_type in ["rn18", "wrn", 'wrn7016', 'wrn7016_silu']
     print(f"Loading robust model: {rob_model_type} from {rob_load_path}...")
 
+    mean = dm_rn.CIFAR100_MEAN if num_classes == 100 else dm_rn.CIFAR10_MEAN
+    std = dm_rn.CIFAR100_STD if num_classes == 100 else dm_rn.CIFAR10_STD
     if rob_model_type == 'wrn7016':
         # Use DeepMind's Swish
         rob_model = dm_rn.WideResNet(
             num_classes=num_classes, activation_fn=dm_rn.Swish,
-            depth=70, width=16, mean=dm_rn.CIFAR100_MEAN, std=dm_rn.CIFAR100_STD
+            depth=70, width=16, mean=mean, std=std
         )
     elif rob_model_type == 'wrn7016_silu':
         # Use PyTorch's SiLU
         rob_model = dm_rn.WideResNet(
             num_classes=num_classes, activation_fn=nn.SiLU, 
-            depth=70, width=16, mean=dm_rn.CIFAR100_MEAN, std=dm_rn.CIFAR100_STD
+            depth=70, width=16, mean=mean, std=std
         )
     elif rob_model_type == "wrn":
-        rob_model = trade_wrn.WideResNet()
+        rob_model = trades_wrn.WideResNet()
     else:
-        rob_model = small_rn.ResNet18()
+        rob_model = small_rn.ResNet18()  # Normalization handled in class init
 
     state_dict = torch.load(rob_load_path)
     if rob_model_type == 'wrn7016_silu':
@@ -86,7 +90,7 @@ def get_comp_model(forward_settings, std_load_path, rob_load_path, num_classes=1
 
 def get_cmodel_and_loaders(
     forward_settings, std_load_path, rob_load_path, dataset_path,
-    dataset_name="CIFAR-10", batch_size_train=500, batch_size_test=500, 
+    dataset_name="CIFAR-10", batch_size_train=500, batch_size_test=500,
     train_with_test=False, train_shuffle=True
 ):
     # Data transforms
@@ -119,13 +123,16 @@ def get_cmodel_and_loaders(
     # Data loaders
     trainloader = DataLoader(
         train_set, batch_size=batch_size_train, pin_memory=True, 
-        shuffle=train_shuffle, num_workers=4, drop_last=True)
+        shuffle=train_shuffle, num_workers=4, drop_last=True
+    )
     trainloader_fast = DataLoader(
         train_set, batch_size=batch_size_train * 9, pin_memory=True, 
-        shuffle=train_shuffle, num_workers=4, drop_last=True)
+        shuffle=train_shuffle, num_workers=4, drop_last=True
+    )
     testloader = DataLoader(
         test_set, batch_size=batch_size_test, pin_memory=True, 
-        shuffle=False, num_workers=4, drop_last=False)
+        shuffle=False, num_workers=4, drop_last=False
+    )
 
     # Composite model
     comp_model = get_comp_model(
@@ -133,17 +140,8 @@ def get_cmodel_and_loaders(
         num_classes=len(test_set.classes)
     )
 
-    return (comp_model, trainloader, testloader, 
-            trainloader_fast, transform_train, transform_test)
-
-
-def process_state_dict_bn(state_dict):
-    # Process state dict (remove "model" prefix)
-    if "bn.running_mean" in state_dict["model"].keys():
-        state_dict["bn"] = OrderedDict()
-        for key in ["running_mean", "running_var", "num_batches_tracked"]:
-            state_dict["bn"][key] = state_dict["model"][f"bn.{key}"]
-            del state_dict["model"][f"bn.{key}"]
+    return comp_model, trainloader, testloader, \
+        trainloader_fast, transform_train, transform_test
 
 
 def load_ckpt(
@@ -156,8 +154,11 @@ def load_ckpt(
     try:  # Optimizer
         optimizer.load_state_dict(state_dict["optimizer"])
         print("Successfully loaded the optimizer state_dict.")
-    except:
-        print("Something went wrong or loading the optimizer!!!")
+    except Exception as err_msg:
+        print("Something went wrong when loading the optimizer!!!")
+        print(f"Error message: {err_msg}")
+        print(optimizer.state_dict()['param_groups'])
+        print(state_dict["optimizer"]['param_groups'])
         print("The optimizer state_dict is not loaded!!!!!\n")
 
     # Scheduler
@@ -184,27 +185,36 @@ def load_ckpt(
         print("Successfully loaded the grad scaler state_dict.")
 
     # Epoch and batch
-    if state_dict["ba"] is not None:
-        state_dict["ba"] += 1
-        if state_dict["ba"] % batch_per_ep != 0:
+    if state_dict['ba'] is not None:
+        state_dict['ba'] += 1
+        if state_dict['ba'] % batch_per_ep != 0:
             print("Warning: Attempting to load from middle of an epoch.")
             print("Continuing training from a checkpoint only works "
-                  "for loading from end-of-epoch.")
+                  "for loading from end of epoch.")
+            print(f"batch count is {state_dict['ba']} “
+                  f"but batch_per_ep is {batch_per_ep}")
     else:
         print("Please note that continuing training from a checkpoint only "
-              "works for loading from end-of-epoch.")
-    ep_start = 1 if reset_scheduler else (state_dict["ep"] + 1 if
-        state_dict["ba"] is None or state_dict["ba"] % batch_per_ep == 0
-        else state_dict["ep"])
+              "works for loading from end of epoch.")
+    ep_start = 1 if reset_scheduler else (state_dict['ep'] + 1 if
+        state_dict['ba'] is None or state_dict['ba'] % batch_per_ep == 0
+        else state_dict['ep'])
 
     # Batch normalization
-    process_state_dict_bn(state_dict)
-    comp_model._comp_model.bn.load_state_dict(state_dict["bn"])
+    # Process state dict (remove "model" prefix)
+    if "bn.running_mean" in state_dict["model"].keys():
+        state_dict['bn'] = OrderedDict()
+        for key in ["running_mean", "running_var", "num_batches_tracked"]:
+            state_dict['bn'][key] = state_dict["model"][f"bn.{key}"]
+            del state_dict["model"][f"bn.{key}"]
+    # Load processed state dict
+    comp_model._comp_model.bn.load_state_dict(state_dict['bn'])
 
     # Gamma scale and bias (after BN)
     if "gamma_scale" in state_dict.keys():
         comp_model._comp_model.set_gamma_scale_bias(
-            state_dict["gamma_scale"], state_dict["gamma_bias"])
+            state_dict["gamma_scale"], state_dict["gamma_bias"]
+        )
     print(f"Gamma scale: {comp_model._comp_model.gamma_scale.item()}, "
           f"Gamma bias: {comp_model._comp_model.gamma_bias.item()}.\n")
 
@@ -213,6 +223,7 @@ def load_ckpt(
 
     # Enable BN affine (default is False)
     if enable_BN:
+        print("Enabled BN affine layer training.")
         comp_model.policy_net.module.bn.affine = True
         comp_model.policy_net.module.bn.weight = \
             nn.parameter.Parameter(torch.empty((1,), device=device))
@@ -220,7 +231,8 @@ def load_ckpt(
             nn.parameter.Parameter(torch.empty((1,), device=device))
         comp_model.policy_net.module.bn.reset_parameters()
         optimizer.add_param_group(
-            {'params': comp_model.policy_net.module.bn.parameters()})
+            {'params': comp_model.policy_net.module.bn.parameters()}
+        )
 
     # Pre-attacked image indices
     img_inds = state_dict["img_inds"]

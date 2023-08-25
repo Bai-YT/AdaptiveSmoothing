@@ -6,7 +6,7 @@ We publically share one CIFAR-10 model and two CIFAR-100 models that aim to defe
 
 | Model             | Clean Accuracy | $\ell_\infty$ AutoAttacked Accuracy ($\epsilon = 8/255$) |
 |-------------------|----------------|----------------------------------------------------------|
-| CIFAR-10          | 95.03 %        | 67.97 %                                                  |
+| CIFAR-10          | 95.23 %        | 68.06 %                                                  |
 | CIFAR-100 Model 1 | 85.21 %        | 38.72 %                                                  |
 | CIFAR-100 Model 2 | 80.18 %        | 35.15 %                                                  |
 
