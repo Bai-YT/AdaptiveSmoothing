@@ -1,4 +1,4 @@
-# Cide borrowed from 
+# Code borrowed from 
 # https://github.com/google-research/big_transfer/blob/master/bit_pytorch/models.py
 
 # Copyright 2020 Google LLC
