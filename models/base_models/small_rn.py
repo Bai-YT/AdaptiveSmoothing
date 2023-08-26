@@ -97,8 +97,9 @@ class Bottleneck(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self, block, num_blocks, num_classes=10, normalize=False, 
-                 return_features=True):
+    def __init__(
+        self, block, num_blocks, num_classes=10, normalize=False, return_features=True
+    ):
         super().__init__()
 
         self.in_planes = 64

@@ -4,11 +4,11 @@ import torchvision.transforms as transforms
 from torch.utils.tensorboard import SummaryWriter
 import pytorch_warmup as warmup
 
+import os
+import json
 import pickle
 import numpy as np
 from tqdm import tqdm
-import json
-import os
 
 from comp_autoattack import AutoAttack
 from adaptive_smoothing import utils, attacks, losses
@@ -25,13 +25,16 @@ class CompModelTrainer:
     print(f"Number of GPUs: {torch.cuda.device_count()}.")
     print(f"Number of CPUs: {os.cpu_count()}.")
 
-    def __init__(self, forward_settings, std_load_path, rob_load_path, dataset_settings, 
-                 training_settings, pgd_settings, randomized_attack_settings):
+    def __init__(
+        self, forward_settings, std_load_path, rob_load_path, dataset_settings, 
+        training_settings, pgd_settings, randomized_attack_settings
+    ):
         # Comp model settings, for debugging purposes
         self.setting_dics = {
             "forward_settings": forward_settings, "dataset_settings": dataset_settings, 
             "training_settings": training_settings, "pgd_settings": pgd_settings, 
-            "randomized_attack_settings:": randomized_attack_settings}
+            "randomized_attack_settings:": randomized_attack_settings
+        }
 
         # Loss functions
         self.ce_loss = nn.CrossEntropyLoss(reduction='none')
@@ -51,7 +54,8 @@ class CompModelTrainer:
         # Get loaders
         # Fasterloader has a hardcoded factor of 9 for now
         print("Dataset:", "CIFAR-100")
-        cmdl_and_loaders = utils.get_cmodel_and_loaders(
+        comp_model, self.trainloader, self.testloader, self.trainloader_fast, \
+            self.transform_train, self.transform_test = utils.get_cmodel_and_loaders(
             forward_settings=forward_settings,
             std_load_path=std_load_path, rob_load_path=rob_load_path,
             dataset_name=dataset_settings["name"],
@@ -61,11 +65,11 @@ class CompModelTrainer:
             train_shuffle=dataset_settings["train_shuffle"],
             train_with_test=self.train_with_test
         )
-        (comp_model, self.trainloader, self.testloader, self.trainloader_fast, 
-         self.transform_train, self.transform_test) = cmdl_and_loaders
 
         # self.comp_model has one output for compatibility with RobustBench
-        self.comp_model = CompositeModelWrapper(comp_model, parallel=forward_settings["parallel"])
+        self.comp_model = CompositeModelWrapper(
+            comp_model, parallel=forward_settings["parallel"]
+        )
         self._comp_model = self.comp_model._comp_model  # This is the unparallelized model
 
         # Trainer settings
@@ -98,11 +102,14 @@ class CompModelTrainer:
         # Optimizer, scheduler, and grad scaler
         self.optimizer = torch.optim.AdamW(
             self.comp_model.parameters(), lr=self.training_settings["lr"],
-            weight_decay=self.training_settings["weight_decay"])
+            weight_decay=self.training_settings["weight_decay"]
+        )
         self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            self.optimizer, num_opt_steps)
+            self.optimizer, num_opt_steps
+        )
         self.warmup_scheduler = warmup.ExponentialWarmup(
-            self.optimizer, warmup_period=num_opt_steps // 25)
+            self.optimizer, warmup_period=num_opt_steps // 25
+        )
         self.grad_scaler = torch.cuda.amp.GradScaler()
 
         # PGD settings
@@ -112,15 +119,18 @@ class CompModelTrainer:
         self.aa_batch_size = pgd_settings["aa_batch_size"]
 
         self.pgd_adversary = attacks.PGDAdversary(
-            self.comp_model.comp_model, randomized_attack_settings, pgd_settings)
+            self.comp_model.comp_model, randomized_attack_settings, pgd_settings
+        )
         if pgd_settings["type"] == 'l_inf':
             self.aa_adversary = AutoAttack(
                 self.comp_model.comp_model, norm='Linf',
-                eps=self.pgd_adversary.pgd_eps, version='standard')
+                eps=self.pgd_adversary.pgd_eps, version='standard'
+            )
         elif pgd_settings["type"] == 'l_2':
             self.aa_adversary = AutoAttack(
                 self.comp_model.comp_model, norm='L2',
-                eps=self.pgd_adversary.pgd_eps, version='standard')
+                eps=self.pgd_adversary.pgd_eps, version='standard'
+            )
         else:
             raise ValueError("Unknown attack norm type.")
         self.aa_adversary.attacks_to_run = pgd_settings["attacks_to_run"]
@@ -174,15 +184,16 @@ class CompModelTrainer:
             assert self.n == self.pa_train_labels.shape[0]
             assert self.n == self.pa_sup_labels.shape[0]
             assert self.n_test == self.pa_test_labels.shape[0]
-            self.img_inds = torch.randperm(self.n)  # For randomly using the pre-attacked data
+            self.img_inds = torch.randperm(self.n)  # For shuffling pre-attacked data
             self.no_batches = int(np.ceil(self.n / self.batch_size_train))
 
         print(f"Training instances count: {self.n}, test instances count: {self.n_test}.")
         print(f"Number of pre-attacked blocks: {self.num_blocks}.\n")
 
-    def log_eval_stats(self, total_loss, correct, gamma_mean, gamma_large, total, 
-                       clean_only=False, auto_attack=True):
-
+    def log_eval_stats(
+        self, total_loss, correct, gamma_mean, gamma_large, total, 
+        clean_only=False, auto_attack=True
+    ):
         # Log validation stats with clean and adaptive attack
         clean_loss, clean_acc = np.mean(total_loss["clean"]), correct["clean"] / total
         clean_gamma_mean = np.mean(gamma_mean["clean"]) 
@@ -212,17 +223,22 @@ class CompModelTrainer:
                 self.writer.add_scalar("Adaptive adv val acc", adv_acc * 100., log_ba)
                 self.writer.add_scalar("Adaptive adv mean gamma", adv_gamma_mean, log_ba)
                 self.writer.add_scalar(
-                    "Eval gamma mean difference", adv_gamma_mean - clean_gamma_mean, log_ba)
-                self.writer.add_scalar("Adaptive adv gamma acc", adv_gamma_acc * 100., log_ba)
+                    "Eval gamma mean difference", adv_gamma_mean - clean_gamma_mean, log_ba
+                )
+                self.writer.add_scalar(
+                    "Adaptive adv gamma acc", adv_gamma_acc * 100., log_ba
+                )
 
         if self.save_path is None:
             print("No save path provided. Validation results not saved.")
 
         else:
             os.makedirs(self.save_path, exist_ok=True)
+
             with open(os.path.join(self.save_path, "log_eval_ada.csv"), 'a') as wfile:
-                wfile.write(
-                    f"Epoch {self.cur_ep}, clean_only: {clean_only}, auto_attack: {auto_attack}\n")
+
+                wfile.write(f"Epoch {self.cur_ep}, clean_only: {clean_only}, "
+                            f"auto_attack: {auto_attack}\n")
                 wfile.write("Clean data\n")
                 wfile.write(f"Average clean test loss: {clean_loss:.4f}.\n")
                 wfile.write(f"Average clean test accuracy: {(clean_acc * 100.):.2f} %.\n")
@@ -232,9 +248,11 @@ class CompModelTrainer:
                 if not clean_only:
                     wfile.write("Adaptive adversary\n")
                     wfile.write(f"Average attacked test loss: {adv_loss:.4f}.\n")
-                    wfile.write(f"Average attacked test accuracy: {(adv_acc * 100.):.2f} %.\n")
+                    wfile.write("Average attacked test accuracy: "
+                                f"{(adv_acc * 100.):.2f} %.\n")
                     wfile.write(f"Average attacked mean gamma: {adv_gamma_mean:.3f}.\n")
-                    wfile.write(f"Average attacked gamma acc: {(adv_gamma_acc * 100.):.2f} %.\n\n")
+                    wfile.write("Average attacked gamma acc: "
+                                f"{(adv_gamma_acc * 100.):.2f} %.\n\n")
 
         if clean_only:
             return clean_loss, clean_acc, None, None
@@ -245,19 +263,23 @@ class CompModelTrainer:
             preds, gammas = self.comp_model.comp_model(images)
             loss = self.ce_loss(preds, labels).mean().item()
             correct = (preds.argmax(dim=1) == labels).sum().item()
-        return loss, correct, gammas.mean().item(), (gammas>self.gamma_consts['eval'][1]).sum().item()
+        return loss, correct, gammas.mean().item(), \
+            (gammas>self.gamma_consts['eval'][1]).sum().item()
 
-    def evaluate_adap(self, pgd_eps=8./255., pgd_alpha=0.0027, pgd_iters=20,
-                      start_ind=0, save_adv_imgs=False, clean_only=False,
-                      auto_attack=True, verbose=False, full=True, debug=False):
+    def evaluate_adap(
+        self, pgd_eps=8./255., pgd_alpha=0.0027, pgd_iters=20,
+        start_ind=0, save_adv_imgs=False, clean_only=False,
+        auto_attack=True, verbose=False,full=True, debug=False
+    ):
         self.comp_model.eval()
         if self._comp_model.use_policy:
             self._comp_model.set_gamma_scale_bias(*self.gamma_consts["eval"])
             print("Using the policy network.")
             print(f"Gamma scale: {self._comp_model.gamma_scale.item():.3f}, "
                   f"Gamma bias: {self._comp_model.gamma_bias.item():.3f}.")
-            print(f"Alpha range: ({self._comp_model.alpha_bias.item():.3f}, "
-                  f"{(self._comp_model.alpha_scale + self._comp_model.alpha_bias).item():.3f}).")
+            alpha_min = self._comp_model.alpha_bias.item()
+            print(f"Alpha range: ({alpha_min:.3f}, "
+                  f"{(self._comp_model.alpha_scale.item() + alpha_min):.3f}).")
         else:
             print(f"Using a constant gamma of {self._comp_model.gamma}.")
 
@@ -265,7 +287,7 @@ class CompModelTrainer:
         gamma_mean, gamma_large = {"clean": [], "adv": []}, {"clean": 0, "adv": 0}
         all_adv_images, total = [], 0
 
-        titer = tqdm(self.testloader, unit="batch", disable=verbose)  # If verbose, disable TQDM
+        titer = tqdm(self.testloader, unit="batch", disable=verbose)
         for ind, (images, labels) in enumerate(titer):
             titer.set_description(f"Epoch {self.cur_ep}, adaptive evaluation.")
 
@@ -281,9 +303,9 @@ class CompModelTrainer:
                         )
                     else:
                         adv_images = self.pgd_adversary.pgd_attack_eval(
-                            images, labels, pgd_type=self.pgd_adversary.pgd_type, pgd_eps=pgd_eps, 
-                            pgd_alpha=pgd_alpha, pgd_iters=pgd_iters, loss_type=self.pgd_eval_loss, 
-                            random_start=False
+                            images, labels, pgd_type=self.pgd_adversary.pgd_type,
+                            pgd_eps=pgd_eps, pgd_alpha=pgd_alpha, pgd_iters=pgd_iters,
+                            loss_type=self.pgd_eval_loss, random_start=False
                         )
 
                 if save_adv_imgs and not clean_only:
@@ -293,8 +315,8 @@ class CompModelTrainer:
                         print("Something went wrong with saving all adv images.")
 
                 for key, imgs in zip(["clean", "adv"], [images, adv_images]):
-                    res = self.get_loss_acc(imgs, labels)
-                    cur_loss, cur_correct, cur_gamma_mean, cur_gamma_large = res
+                    cur_loss, cur_correct, cur_gamma_mean, cur_gamma_large = \
+                        self.get_loss_acc(imgs, labels)
                     total_loss[key] += [cur_loss]
                     correct[key] += cur_correct
                     gamma_mean[key] += [cur_gamma_mean]
@@ -338,7 +360,9 @@ class CompModelTrainer:
 
         # Log eval statistics
         return self.log_eval_stats(
-            total_loss, correct, gamma_mean, gamma_large, total, clean_only=False, auto_attack=True)
+            total_loss, correct, gamma_mean, gamma_large, total,
+            clean_only=False, auto_attack=True
+        )
 
     def evaluate_data(self, debug=False):
         if self.pa_test_data is None:
@@ -351,7 +375,9 @@ class CompModelTrainer:
         else:
             print(f"Using a constant gamma of {self._comp_model.gamma}.")
 
-        no_test_batches = int(np.ceil(self.n_test / (self.batch_size_test * 5 // self.num_blocks)))
+        no_test_batches = int(
+            np.ceil(self.n_test / (self.batch_size_test * 5 // self.num_blocks))
+        )
         block_loss = [None for _ in range(self.num_blocks)]
         block_acc = [None for _ in range(self.num_blocks)]
         real_bs = self.batch_size_test * 5 // self.num_blocks
@@ -361,14 +387,17 @@ class CompModelTrainer:
             titer.set_description(f"Epoch {self.cur_ep}, pre-attacked evaluation")
             total_loss, correct = [], 0
 
-            for ba in range(ind * no_test_batches // self.num_blocks,
-                            (ind + 1) * no_test_batches // self.num_blocks):
+            for ba in range(
+                ind * no_test_batches // self.num_blocks,
+                (ind + 1) * no_test_batches // self.num_blocks
+            ):
 
                 images = self.pa_test_data[
-                    ba * real_bs: (ba + 1) * real_bs, :, :, :].detach().to(
-                        self.device, non_blocking=True)
+                    ba * real_bs: (ba + 1) * real_bs, :, :, :
+                ].detach().to(self.device, non_blocking=True)
                 labels = self.pa_test_labels[
-                    ba * real_bs: (ba + 1) * real_bs].to(self.device, non_blocking=True)
+                    ba * real_bs: (ba + 1) * real_bs
+                ].to(self.device, non_blocking=True)
 
                 with torch.no_grad():
                     preds = self.comp_model(images)
@@ -395,9 +424,11 @@ class CompModelTrainer:
 
         return block_loss, block_acc
 
-    def evaluate(self, load_path=None, save_path=None, pgd_eps=None, pgd_alpha=None, 
-                 pgd_iters=None, full=True, clean_only=False, auto_attack=True,
-                 eval_pa_data=True, save_adv_imgs=False, debug=False):
+    def evaluate(
+        self, load_path=None, save_path=None, pgd_eps=None, pgd_alpha=None, 
+        pgd_iters=None, full=True, clean_only=False, auto_attack=True,
+        eval_pa_data=True, save_adv_imgs=False, debug=False
+    ):
         if save_path is not None:
             self.save_path = save_path
         if load_path is not None:
@@ -415,7 +446,8 @@ class CompModelTrainer:
         res = self.evaluate_adap(
             pgd_eps=pgd_eps, pgd_alpha=pgd_alpha, pgd_iters=pgd_iters,
             save_adv_imgs=save_adv_imgs, auto_attack=auto_attack, full=full,
-            clean_only=clean_only, verbose=auto_attack, debug=debug)
+            clean_only=clean_only, verbose=auto_attack, debug=debug
+        )
 
         if eval_pa_data:
             self.evaluate_data(debug=debug)
@@ -435,9 +467,13 @@ class CompModelTrainer:
         # Attack before zero_grad so that we don't remove the clean gradients
         self.comp_model.eval(scale_alpha=False)
         if self.use_apgd_training:
-            adv_images_list = self.pgd_adversary.randomized_apgd_attack(clean_images, clean_labels)
+            adv_images_list = self.pgd_adversary.randomized_apgd_attack(
+                clean_images, clean_labels
+            )
         else:
-            adv_images_list = self.pgd_adversary.randomized_pgd_attack(clean_images, clean_labels)
+            adv_images_list = self.pgd_adversary.randomized_pgd_attack(
+                clean_images, clean_labels
+            )
         self.comp_model.train(scale_alpha=False)
         # print("Done with attacking.")
 
@@ -454,7 +490,7 @@ class CompModelTrainer:
                 [ones] * (self.pgd_adversary.n_target_classes + 1), dim=0)
             all_scales = torch.cat(
                 [ones * self.comp_loss_params["scale"]["clean"]] *
-                (10 if self.use_fast_loader else 1) +  # Assuming the fast loader has a factor of 9
+                (10 if self.use_fast_loader else 1) +  # Assuming the fast loader has factor 9
                 [ones * self.comp_loss_params["scale"]["ada"]] *
                 (self.pgd_adversary.n_target_classes + 1), dim=0
             ) / (self.n_mini_batches if self.accum_grad == -1 else self.accum_grad)
@@ -462,45 +498,56 @@ class CompModelTrainer:
         else:  # There are pre-attacked data
             assert not self.use_fast_loader  # Incompatible
             cur_inds = self.img_inds[
-                self.ba * self.batch_size_train: (self.ba + 1) * self.batch_size_train]
+                self.ba * self.batch_size_train: (self.ba + 1) * self.batch_size_train
+            ]
             pa_images = self.transform(self.pa_train_data[cur_inds, :, :, :].detach())
             pa_labels = self.pa_train_labels[cur_inds].to(self.device, non_blocking=True)
             pa_sup_labels = self.pa_sup_labels[cur_inds].to(self.device, non_blocking=True)
 
             # Assemble buffer
-            all_images = torch.cat([clean_images.cpu()] + adv_images_list + [pa_images], dim=0)
+            all_images = torch.cat(
+                [clean_images.cpu()] + adv_images_list + [pa_images], dim=0
+            )
             all_labels = torch.cat(
-                [clean_labels] * (self.pgd_adversary.n_target_classes + 2) + [pa_labels], dim=0)
+                [clean_labels] * (self.pgd_adversary.n_target_classes + 2) + [pa_labels], dim=0
+            )
             all_sup_labels = torch.cat(
-                [zeros] + [ones] * (self.pgd_adversary.n_target_classes + 1) + 
-                [pa_sup_labels], dim=0)
+                [zeros] + [ones] * (self.pgd_adversary.n_target_classes + 1) + [pa_sup_labels],
+                dim=0
+            )
             all_scales = torch.cat(
                 [ones * self.comp_loss_params["scale"]["clean"]] + 
                 [ones * self.comp_loss_params["scale"]["ada"]] * 
                 (self.pgd_adversary.n_target_classes + 1) + 
                 [torch.ones_like(pa_sup_labels, device=self.device) * 
-                 self.comp_loss_params["scale"]["pa"]], dim=0)
+                 self.comp_loss_params["scale"]["pa"]], dim=0
+            )
 
-        return (all_images, all_labels, all_sup_labels.detach().half(), all_scales.detach().half())
+        return all_images, all_labels, \
+            all_sup_labels.detach().half(), all_scales.detach().half()
 
-    def log_training_stats(self, train_loss, EgammaP, EgammaN, gammaAccP, gammaAccN, 
-                           mini_batch_size, batch_num, epoch_length):
+    def log_training_stats(
+        self, train_loss, EgammaP, EgammaN, gammaAccP, gammaAccN,
+        mini_batch_size, batch_num, epoch_length
+    ):
         # Tensorboard
-        self.writer.add_scalar('Training loss', train_loss, self.glob_batch_num)
-        self.writer.add_scalar('Minibatch size', mini_batch_size, self.glob_batch_num)
-        self.writer.add_scalar('E[gamma] for sup_labels=1', EgammaP, self.glob_batch_num)
-        self.writer.add_scalar('E[gamma] for sup_labels=0', EgammaN, self.glob_batch_num)
-        self.writer.add_scalar('P[gamma > 0] for sup_labels=1', gammaAccP, self.glob_batch_num)
-        self.writer.add_scalar('P[gamma <= 0] for sup_labels=0', gammaAccN, self.glob_batch_num)
+        gbn = self.glob_batch_num
+        self.writer.add_scalar('Training loss', train_loss, gbn)
+        self.writer.add_scalar('Minibatch size', mini_batch_size, gbn)
+        self.writer.add_scalar('E[gamma] for sup_labels=1', EgammaP, gbn)
+        self.writer.add_scalar('E[gamma] for sup_labels=0', EgammaN, gbn)
+        self.writer.add_scalar('P[gamma > 0] for sup_labels=1', gammaAccP, gbn)
+        self.writer.add_scalar('P[gamma <= 0] for sup_labels=0', gammaAccN, gbn)
         self.writer.add_scalar(
-            'Learning rate', self.optimizer.param_groups[0]['lr'], self.glob_batch_num)
-        self.writer.add_scalar('Grad scale', self.grad_scaler.get_scale(), self.glob_batch_num)
+            'Learning rate', self.optimizer.param_groups[0]['lr'], gbn
+        )
+        self.writer.add_scalar('Grad scale', self.grad_scaler.get_scale(), gbn)
 
         # Write to log file
         with open(os.path.join(self.save_path, "log_train.csv"), 'a') as wfile:
-            wfile.write(f"Epoch {self.cur_ep}, "
-                        f"Batch {1 + (batch_num if self.pa_train_data is None else self.ba)} "
-                        f"of {epoch_length if self.pa_train_data is None else self.no_batches}:\n")
+            cur_batch = 1 + (batch_num if self.pa_train_data is None else self.ba)
+            total_batch = epoch_length if self.pa_train_data is None else self.no_batches
+            wfile.write(f"Epoch {self.cur_ep}, Batch {cur_batch} of {total_batch}:\n")
             wfile.write(f"Training loss: {train_loss:.4f}.\n")
             wfile.write(f"E[gamma] = {EgammaP:.3f} for sup_labels=1.\n")
             wfile.write(f"E[gamma] = {EgammaN:.3f} for sup_labels=0.\n")
@@ -595,20 +642,23 @@ class CompModelTrainer:
             # Average training loss
             train_loss = np.mean(total_loss[-self.n_mini_batches:])
             # TQDM postfix
-            tepoch.set_postfix(loss=train_loss.round(decimals=4),
-                               lr=self.optimizer.param_groups[0]['lr'])
+            tepoch.set_postfix(
+                loss=train_loss.round(decimals=4), lr=self.optimizer.param_groups[0]['lr']
+            )
             # Save training statistics
-            self.log_training_stats(train_loss,
+            self.log_training_stats(
+                train_loss, epoch_length=len(tepoch),
                 EgammaP=mean_gamma[0, :].mean(), EgammaN=mean_gamma[1, :].mean(),
                 gammaAccP=gamma_acc[0, :].mean(), gammaAccN=gamma_acc[1, :].mean(),
-                mini_batch_size=mini_batch_size, batch_num=batch_num, epoch_length=len(tepoch))
+                mini_batch_size=mini_batch_size, batch_num=batch_num,
+            )
 
             # Save and evaluate model at the given interval
             if self.glob_batch_num % eval_freq_iter == 0 and self.glob_batch_num != 0:
                 self.save_and_eval(debug=debug)
 
-            # If there is pre-attacked data, this is the batch counter for the big (5-epoch) loop
-            # Otherwise, this is the total batch count
+            # If there is pre-attacked data, then this is the batch counter for the big
+            # (5-epoch) loop. Otherwise, this is the total batch count
             self.ba += 1
 
             # If there is pre-attacked data, re-shuffle after going through all of them
@@ -623,8 +673,9 @@ class CompModelTrainer:
         print(f"Average training loss: {np.mean(total_loss):.4f}.")
         print(f"Average training accuracy: {(correct / total * 100):.2f} %.")
 
-    def train(self, save_path, load_path=None, eval_freq={"epoch": 1, "iter": 200}, debug=False):
-
+    def train(
+        self, save_path, load_path=None, eval_freq={"epoch": 1, "iter": 200}, debug=False
+    ):
         print(f"Autocast enabled: {self._comp_model.enable_autocast}.")
         self.comp_model.train()
         self.save_path = save_path  # Save folder path
@@ -665,15 +716,20 @@ class CompModelTrainer:
         self._comp_model.set_gamma_scale_bias(*self.gamma_consts["eval"])
 
         os.makedirs(self.save_path, exist_ok=True)
-        save_pth = os.path.join(self.save_path, f"epoch_{self.cur_ep}_ba_{self.glob_batch_num}.pt")
+        save_pth = os.path.join(
+            self.save_path, f"epoch_{self.cur_ep}_ba_{self.glob_batch_num}.pt"
+        )
         print(f"The path of the saved file is: {save_pth}.")
 
         torch.save({
-            "model": self._comp_model.policy_net.state_dict(), "bn": self._comp_model.bn.state_dict(), 
+            "model": self._comp_model.policy_net.state_dict(),
+            "bn": self._comp_model.bn.state_dict(), 
             "ep": self.cur_ep, "img_inds": self.img_inds, "ba": self.ba,
-            "optimizer": self.optimizer.state_dict(), "scheduler": self.scheduler.state_dict(),
+            "optimizer": self.optimizer.state_dict(),
+            "scheduler": self.scheduler.state_dict(),
             "warmup_scheduler": self.warmup_scheduler.state_dict(), 
-            "grad_scaler": self.grad_scaler.state_dict()}, save_pth)
+            "grad_scaler": self.grad_scaler.state_dict()
+        }, save_pth)
 
         self.evaluate(
             pgd_eps=self.pgd_adversary.pgd_eps, pgd_alpha=self.pgd_adversary.pgd_alpha_test,
@@ -687,9 +743,10 @@ class CompModelTrainer:
 
     def load_checkpoint(self, load_path, enable_BN=False, reset_scheduler=False):
         ep_start, ba, img_inds = utils.load_ckpt(
-            self.comp_model, self.optimizer, self.scheduler, self.warmup_scheduler, self.grad_scaler,
-            lr=self.training_settings['lr'], load_path=load_path, batch_per_ep=len(self.trainloader),
-            enable_BN=enable_BN, reset_scheduler=reset_scheduler, device=self.device
+            self.comp_model, self.optimizer, self.scheduler, self.warmup_scheduler,
+            self.grad_scaler, lr=self.training_settings['lr'], load_path=load_path,
+            batch_per_ep=len(self.trainloader), enable_BN=enable_BN,
+            reset_scheduler=reset_scheduler, device=self.device
         )
 
         if ep_start % 5 == 1 and self.n is not None:
@@ -698,7 +755,8 @@ class CompModelTrainer:
             self.ba, self.img_inds = ba, img_inds
             if self.n is not None and (
                 self.img_inds is None or self.img_inds.max().item() >= self.n):
-                self.ba, self.img_inds = ep_start * len(self.testloader), torch.randperm(self.n)
+                self.ba = ep_start * len(self.testloader)
+                self.img_inds = torch.randperm(self.n)
 
         if self.n is not None:
             assert (len(self.img_inds) == self.n) and (self.n == self.img_inds.max() + 1)

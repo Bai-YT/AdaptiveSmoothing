@@ -80,7 +80,7 @@ class CompositeModel(nn.Module):
         """ Sets the mixing network and the BN in training mode.
             Overloads the train method of nn.Module.
         Args:
-            mode (bool):        Whether to set training mode (True) or eval mode (False). 
+            mode (bool):        Whether to set training mode (True) or evaluation mode (False). 
                                 Default: True.
             scale_alpha (bool): Whether to scale alpha produced by the mixing network. 
                                 If None, then scale alpha iff in eval mode. Default: None.
