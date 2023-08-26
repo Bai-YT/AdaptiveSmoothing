@@ -1,7 +1,8 @@
 from __future__ import absolute_import
 
 '''
-This file is from: https://raw.githubusercontent.com/bearpaw/pytorch-classification/master/models/cifar/resnet.py
+This file is from: 
+https://raw.githubusercontent.com/bearpaw/pytorch-classification/master/models/cifar/resnet.py
 by Wei Yang
 '''
 import torch

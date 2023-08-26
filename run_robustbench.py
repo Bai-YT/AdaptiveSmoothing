@@ -14,8 +14,8 @@ def get_pretrained_model(
     root_dir, std_load_path, rob_load_path, comp_load_path,
     model_name, dataset, forward_settings
 ):
-    comp_load_path = join(
-        root_dir, comp_load_path) if comp_load_path is not None else None
+    comp_load_path = join(root_dir, comp_load_path) \
+        if comp_load_path is not None else None
     std_load_path = join(root_dir, std_load_path)
     rob_load_path = join(root_dir, rob_load_path)
 
@@ -52,7 +52,9 @@ def get_pretrained_model(
         comp_model.set_alpha_scale_bias(alpha_scale=.04, alpha_bias=.96)
         comp_model.set_base_model_scale(std_scale=1.2, rob_scale=.3)
     else:
-        raise ValueError(f"Unknown model name and dataset combination: {model_name}.")
+        raise ValueError(
+            f"Unknown model name and dataset combination: {model_name}."
+        )
 
     # Return wrapped model
     return CompositeModelWrapper(comp_model, parallel=forward_settings["parallel"])
@@ -72,15 +74,19 @@ def get_pretrained_model(
     required=True, help="Dataset (one of {'cifar10', 'cifar100'})."
 )
 @click.option(
+    '--n_examples', type=int, default=10000,
+    help="Number of test examples. Default to 10000."
+)
+@click.option(
     '--fp16/--fp32', default=False, show_default=True,
     help="Use mixed precision (fp16) or not (fp32)."
 )
 
-def run_robustbench(root_dir, model_name, dataset, fp16):
+def run_robustbench(root_dir, model_name, dataset, n_examples, fp16):
     threat_model = "Linf"  # one of {"Linf", "L2", "corruptions"}
     assert not (dataset == 'cifar10' and model_name == 'trades')
 
-    std_load_path = f"Base/{dataset}_bit_rn152.tar"
+    std_load_path = f"Base/{dataset}_bit_rn152.pt"
     rob_load_path = f"Base/{dataset}_linf_{model_name}_wrn70-16.pt"
     comp_load_path = f"CompModel/{dataset}_{model_name}_best.pt"
 
@@ -107,15 +113,18 @@ def run_robustbench(root_dir, model_name, dataset, fp16):
 
     # Save state dict
     makedirs(join("model_info", dataset, threat_model), exist_ok=True)
-    save_sd = model.cpu().state_dict()
-    torch.save(save_sd, f"model_info/{dataset}/{threat_model}/{model_full_name}.pt")
+    torch.save(
+        model.cpu().state_dict(),
+        f"model_info/{dataset}/{threat_model}/{model_full_name}.pt"
+    )
 
     # Run RobustBench benchmark!
     seed_all(20230331)
     model._comp_model.enable_autocast = fp16
+    batch_size = 40 * torch.cuda.device_count()
     clean_acc, robust_acc = benchmark(
-        model, model_name=model_full_name, n_examples=10000, dataset=dataset,
-        batch_size=40 * torch.cuda.device_count(), threat_model=threat_model,
+        model, model_name=model_full_name, n_examples=n_examples,
+        dataset=dataset, batch_size=batch_size, threat_model=threat_model,
         eps=8/255, device=torch.device("cuda:0"), to_disk=True
     )
 
