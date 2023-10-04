@@ -10,6 +10,20 @@ We publically share one CIFAR-10 model and two CIFAR-100 models that aim to defe
 | CIFAR-100 Model 1 | 85.21 %        | 38.72 %                                                  |
 | CIFAR-100 Model 2 | 80.18 %        | 35.15 %                                                  |
 
+These results are also verified and listed on [RobustBench](https://robustbench.github.io). The results reported in the preprint paper is not yet up to date and will be updated soon.
+
+#### Citing our work (BibTeX)
+
+```bibtex
+@article{bai2023improving,
+  title={Improving the Accuracy-Robustness Trade-off of Classifiers via Adaptive Smoothing},
+  author={Bai, Yatong and Anderson, Brendon G and Kim, Aerin and Sojoudi, Somayeh},
+  journal={arXiv preprint arXiv:2301.12554},
+  year={2023}
+}
+```
+
+
 ### Running RobustBench to replicate the results
 
 Running the [RobustBench](https://github.com/RobustBench/robustbench) benchmark should only require `pytorch`, `torchvision`, `numpy`, `click`, and `robustbench` packages.

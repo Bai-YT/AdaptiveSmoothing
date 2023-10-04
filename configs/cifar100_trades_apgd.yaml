@@ -63,7 +63,7 @@ training_settings:
     epoch: 4  # Training epochs + 1
     iter: 75  # For 4 GPUs
 
-pgd_settings:
+pgd_settings:  # Evaluation attack
   type: 'l_inf'
   eps: 'default'  # 8/255 for l_inf, 0.5 for l_2
   iters_test: 20  # Only for PGD and not for AA
@@ -76,7 +76,7 @@ pgd_settings:
   #     ['apgd-ce', 'apgd-t'] for training-time validation
   # For stronger evaluation AA, use ['apgd-ce-rand', 'apgd-t-rand', 'fab-t', 'square']
 
-randomized_attack_settings:
+randomized_attack_settings:  # Training attack
   randomize: True
   apgd: True  # True for APGD, False for PGD
   random_start: True

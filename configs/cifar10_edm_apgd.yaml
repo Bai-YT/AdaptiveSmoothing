@@ -7,7 +7,7 @@ model_load_path:
   # 'None'  # CompModel/.../...pt
   comp: 'CompModel/CIFAR-10_TRADES_Linf/V4_APGD_EDM/epoch_2_ba_1248.pt'
 
-log_dir: '/home/ybai/disk'  # Parent folder of trained models and custom datasets
+log_dir: YOUR_MODEL_ROOT_DIR  # Parent folder of trained models and custom datasets
 log_path: 'CompModel/CIFAR-10_TRADES_Linf/V4_APGD_EDM'
 
 # For training / evaluating the policy
@@ -65,7 +65,7 @@ training_settings:
     epoch: 4  # Training epochs + 1
     iter: 104  # 104 for 4 GPUs
 
-pgd_settings:
+pgd_settings:  # Evaluation attack
   type: 'l_inf'
   eps: 'default'  # 8/255 for l_inf, 0.5 for l_2
   iters_test: 20  # Only for PGD and not for AA
@@ -78,7 +78,7 @@ pgd_settings:
   #     ['apgd-ce', 'apgd-t'] for training-time validation
   # For stronger evaluation AA, use ['apgd-ce-rand', 'apgd-t-rand', 'fab-t', 'square']
 
-randomized_attack_settings:
+randomized_attack_settings:  # Training attack
   randomize: True
   apgd: True  # True for APGD, False for PGD
   random_start: True
